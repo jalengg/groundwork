@@ -15,3 +15,24 @@ def test_cities_yaml_loads():
     assert val_cities[0]["name"] == "irving_tx"
     assert all("query" in c and c["query"] for c in cfg["cities"])
     assert all(c["split"] in {"train", "val"} for c in cfg["cities"])
+
+from data_pipeline.tile_grid import generate_tile_centers
+
+def test_tile_grid_non_overlapping():
+    # Fake bbox 20km x 20km, 150 tiles, 2.56km tile size
+    centers = generate_tile_centers(
+        bbox_m=(0, 0, 20000, 20000),  # (west, south, east, north) in meters
+        tile_size_m=2560,
+        n_tiles=150,
+        jitter_fraction=0.3,
+        seed=42
+    )
+    assert len(centers) <= 150
+    # Each center is (x_m, y_m, rotation_deg)
+    assert all(len(c) == 3 for c in centers)
+    # Rotations are continuous in [0, 360)
+    rotations = [c[2] for c in centers]
+    assert min(rotations) >= 0.0
+    assert max(rotations) < 360.0
+    # Not all the same rotation (would indicate N=4 bug from old code)
+    assert len(set(round(r, 1) for r in rotations)) > 10
