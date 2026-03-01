@@ -1,6 +1,7 @@
 # data pipeline tests
 
-import yaml, os
+import os
+import yaml
 
 def test_cities_yaml_loads():
     path = os.path.join(os.path.dirname(__file__), "../data_pipeline/cities.yaml")
@@ -12,3 +13,5 @@ def test_cities_yaml_loads():
     val_cities = [c for c in cfg["cities"] if c["split"] == "val"]
     assert len(val_cities) == 1
     assert val_cities[0]["name"] == "irving_tx"
+    assert all("query" in c and c["query"] for c in cfg["cities"])
+    assert all(c["split"] in {"train", "val"} for c in cfg["cities"])
