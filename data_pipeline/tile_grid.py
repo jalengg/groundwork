@@ -11,7 +11,12 @@ def generate_tile_centers(
     """
     Returns list of (x_m, y_m, rotation_deg) for non-overlapping tiles.
     bbox_m: (west, south, east, north) in projected meters.
+    If n_tiles exceeds available grid cells (cols * rows), the returned list will be shorter than n_tiles.
     """
+    if not (0.0 <= jitter_fraction < 0.5):
+        raise ValueError(
+            f"jitter_fraction must be in [0, 0.5) to keep centers inside the bbox; got {jitter_fraction}"
+        )
     rng = np.random.default_rng(seed)
     west, south, east, north = bbox_m
     width = east - west

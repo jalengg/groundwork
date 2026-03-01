@@ -36,3 +36,5 @@ def test_tile_grid_non_overlapping():
     assert max(rotations) < 360.0
     # Not all the same rotation (would indicate N=4 bug from old code)
     assert len(set(round(r, 1) for r in rotations)) > 10
+    west, south, east, north = 0, 0, 20000, 20000
+    assert all(west <= c[0] <= east and south <= c[1] <= north for c in centers)
