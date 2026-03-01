@@ -8,3 +8,17 @@ __pycache__/
 .pytest_cache/
 srtm_cache/
 osm_cache/
+.env
+*.env
+.ipynb_checkpoints/
+*.log
+*.pt
+*.pth
+*.geojson
+*.shp
+*.dbf
+*.shx
+*.prj
+*.cpg
+.DS_Store
+Thumbs.db

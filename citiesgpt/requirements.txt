@@ -1,5 +1,5 @@
 torch>=2.0.0
-torchvision
+torchvision>=0.15.0
 numpy
 rasterio>=1.3.0
 geopandas
@@ -11,8 +11,8 @@ scikit-image
 sknw
 networkx
 rdp
-torchmetrics[image]
-anthropic
+torchmetrics[image]>=1.0.0
+anthropic>=0.20.0
 pyyaml
 tqdm
 matplotlib
