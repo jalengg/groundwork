@@ -1,4 +1,4 @@
-# CitiesGPT Road Generation — Implementation Plan
+# Groundwork Road Generation — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -32,7 +32,7 @@ Phase 9 — Integration & style conditioning
 
 **Files to create:**
 ```
-citiesgpt/
+groundwork/
   data/                      ← generated training images (gitignored)
   docs/plans/                ← this file lives here
   model/
@@ -53,7 +53,7 @@ citiesgpt/
     app.py                   ← Flask inference server
     inference.py             ← Load model, run generation, return vectors
   mod/                       ← C# Visual Studio project
-    CitiesGPT.csproj
+    Groundwork.csproj
     src/
       Mod.cs                 ← IUserMod entry point
       Loading.cs             ← ILoadingExtension
@@ -421,7 +421,7 @@ All road-placement calls must happen on the **simulation thread** via `Simulatio
 
 Harmony patching requires the **CitiesHarmony** Workshop mod (ID 2040656402) to be subscribed. Reference isolation: keep all HarmonyLib calls in `Patcher.cs`.
 
-### Task 8.1: Visual Studio project setup (`mod/CitiesGPT.csproj`)
+### Task 8.1: Visual Studio project setup (`mod/Groundwork.csproj`)
 
 **References to add:**
 - `Assembly-CSharp.dll`
@@ -431,7 +431,7 @@ Harmony patching requires the **CitiesHarmony** Workshop mod (ID 2040656402) to 
 - `UnityEngine.UI.dll`
 - `0Harmony.dll` (from CitiesHarmony mod folder)
 
-**Build output:** copy DLL to `%LOCALAPPDATA%\Colab\Cities_Skylines\Addons\Mods\CitiesGPT\`
+**Build output:** copy DLL to `%LOCALAPPDATA%\Colab\Cities_Skylines\Addons\Mods\Groundwork\`
 
 **Step 1:** Create the `.csproj` file with the above references.
 **Step 2:** Create `Mod.cs` with a minimal `IUserMod` implementation (name + description only) and verify it loads in-game without errors.
@@ -470,7 +470,7 @@ Subclass `ToolBase`. The tool needs to:
 **Output:** `byte[]` PNG (encoded with Unity's `Texture2D.EncodeToPNG()`), which is then base64-encoded for the HTTP request.
 
 **Step 1:** Write `HeightmapExtractor.cs` with `ExtractConditioningImage(Vector3 center, float radius)`.
-**Step 2:** Test: save the PNG to `%TEMP%\citiesgpt_cond.png` and inspect it visually.
+**Step 2:** Test: save the PNG to `%TEMP%\groundwork_cond.png` and inspect it visually.
 **Step 3:** Commit: `mod: add heightmap + zone conditioning image extractor`.
 
 ---
@@ -525,7 +525,7 @@ Subclass `ToolBase`. The tool needs to:
 **Full interaction flow:**
 
 ```
-1. Player activates CitiesGPT brush tool from toolbar
+1. Player activates Groundwork brush tool from toolbar
 2. Player adjusts radius with scroll wheel
 3. Player selects road style (US Suburb / US Grid / Organic) from a simple dropdown panel
 4. Player left-clicks on map

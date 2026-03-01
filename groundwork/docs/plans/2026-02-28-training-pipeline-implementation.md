@@ -1,4 +1,4 @@
-# CitiesGPT Training Pipeline — Implementation Plan
+# Groundwork Training Pipeline — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
@@ -17,14 +17,14 @@
 ### Task 1: Scaffold project structure and requirements
 
 **Files:**
-- Create: `citiesgpt/requirements.txt`
-- Create: `citiesgpt/.gitignore`
-- Create: `citiesgpt/data_pipeline/__init__.py` (empty)
-- Create: `citiesgpt/model/__init__.py` (empty)
-- Create: `citiesgpt/tests/__init__.py` (empty)
-- Create: `citiesgpt/tests/test_data_pipeline.py` (empty for now)
-- Create: `citiesgpt/tests/test_model.py` (empty for now)
-- Create: `citiesgpt/notebooks/` (empty dir, add `.gitkeep`)
+- Create: `groundwork/requirements.txt`
+- Create: `groundwork/.gitignore`
+- Create: `groundwork/data_pipeline/__init__.py` (empty)
+- Create: `groundwork/model/__init__.py` (empty)
+- Create: `groundwork/tests/__init__.py` (empty)
+- Create: `groundwork/tests/test_data_pipeline.py` (empty for now)
+- Create: `groundwork/tests/test_model.py` (empty for now)
+- Create: `groundwork/notebooks/` (empty dir, add `.gitkeep`)
 
 **Step 1:** Create `requirements.txt`:
 ```
@@ -69,7 +69,7 @@ osm_cache/
 
 **Step 4:** Verify install locally:
 ```bash
-cd citiesgpt
+cd groundwork
 pip install -r requirements.txt
 python -c "import rasterio, osmnx, torch; print('OK')"
 ```
@@ -77,8 +77,8 @@ Expected: `OK`
 
 **Step 5:** Commit:
 ```bash
-git add citiesgpt/
-git commit -m "chore: scaffold citiesgpt project structure"
+git add groundwork/
+git commit -m "chore: scaffold groundwork project structure"
 ```
 
 ---
@@ -86,7 +86,7 @@ git commit -m "chore: scaffold citiesgpt project structure"
 ### Task 2: City configuration (`data_pipeline/cities.yaml`)
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/cities.yaml`
+- Create: `groundwork/data_pipeline/cities.yaml`
 
 **Step 1:** Create the config:
 ```yaml
@@ -160,8 +160,8 @@ git commit -m "data: add city configuration"
 Generates non-overlapping tile center points with random jitter and a random rotation angle per tile. Centers are on a regular grid over the city's bounding box; jitter is added per cell to prevent a perfectly uniform pattern.
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/tile_grid.py`
-- Modify: `citiesgpt/tests/test_data_pipeline.py`
+- Create: `groundwork/data_pipeline/tile_grid.py`
+- Modify: `groundwork/tests/test_data_pipeline.py`
 
 **Step 1:** Write the failing test:
 ```python
@@ -256,8 +256,8 @@ git commit -m "data: add non-overlapping tile grid generator with continuous rot
 Downloads SRTM 30m elevation for a bounding box, reprojects it onto an oversized axis-aligned grid at 5m/px using rasterio, then returns the array. The oversized grid (724×724) is later rotated and cropped to 512×512 by the assembler.
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/elevation_layer.py`
-- Modify: `citiesgpt/tests/test_data_pipeline.py`
+- Create: `groundwork/data_pipeline/elevation_layer.py`
+- Modify: `groundwork/tests/test_data_pipeline.py`
 
 **Step 1:** Write the failing test:
 ```python
@@ -363,8 +363,8 @@ git commit -m "data: add SRTM elevation layer fetcher"
 Fetches water polygons and land use polygons from OSM for a bounding box, rasterizes each onto the same grid, returns two float32 arrays.
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/osm_layers.py`
-- Modify: `citiesgpt/tests/test_data_pipeline.py`
+- Create: `groundwork/data_pipeline/osm_layers.py`
+- Modify: `groundwork/tests/test_data_pipeline.py`
 
 **Step 1:** Write the failing tests:
 ```python
@@ -511,8 +511,8 @@ Two functions from the same OSMnx road graph:
 2. `rasterize_road_output()` → 5-channel one-hot array (the training target)
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/road_layers.py`
-- Modify: `citiesgpt/tests/test_data_pipeline.py`
+- Create: `groundwork/data_pipeline/road_layers.py`
+- Modify: `groundwork/tests/test_data_pipeline.py`
 
 **Step 1:** Write failing tests:
 ```python
@@ -666,8 +666,8 @@ git commit -m "data: add road rasterizers for conditioning channel and 5-channel
 Assembles all 4 conditioning channels + 5-channel road output into a single tile. Applies the oversized-grid → rotate → center-crop pattern so all channels are aligned at the same rotation.
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/tile_assembler.py`
-- Modify: `citiesgpt/tests/test_data_pipeline.py`
+- Create: `groundwork/data_pipeline/tile_assembler.py`
+- Modify: `groundwork/tests/test_data_pipeline.py`
 
 **Step 1:** Write failing test:
 ```python
@@ -767,9 +767,9 @@ git commit -m "data: add tile assembler with rotation and crop"
 `cdg.py` is the CLI script that generates all tiles for all cities and saves them as `.npy` files. `dataset.py` is the PyTorch Dataset that loads them with on-the-fly augmentation.
 
 **Files:**
-- Create: `citiesgpt/data_pipeline/cdg.py`
-- Create: `citiesgpt/data_pipeline/dataset.py`
-- Modify: `citiesgpt/tests/test_data_pipeline.py`
+- Create: `groundwork/data_pipeline/cdg.py`
+- Create: `groundwork/data_pipeline/dataset.py`
+- Modify: `groundwork/tests/test_data_pipeline.py`
 
 **Step 1:** Write failing dataset test:
 ```python
@@ -954,8 +954,8 @@ git commit -m "data: add main pipeline script and PyTorch dataset class"
 The VAE learns to compress 5-channel road layouts to a 64×64×4 latent space and reconstruct them. Trained first, then frozen. The diffusion model never sees raw road images.
 
 **Files:**
-- Create: `citiesgpt/model/vae.py`
-- Create: `citiesgpt/tests/test_model.py`
+- Create: `groundwork/model/vae.py`
+- Create: `groundwork/tests/test_model.py`
 
 **Step 1:** Write failing tests:
 ```python
@@ -1081,9 +1081,9 @@ git commit -m "model: add VAE encoder/decoder architecture"
 ### Task 10: VAE loss and training script (`model/vae_loss.py`, `model/train_vae.py`)
 
 **Files:**
-- Create: `citiesgpt/model/vae_loss.py`
-- Create: `citiesgpt/model/train_vae.py`
-- Modify: `citiesgpt/tests/test_model.py`
+- Create: `groundwork/model/vae_loss.py`
+- Create: `groundwork/model/train_vae.py`
+- Modify: `groundwork/tests/test_model.py`
 
 **Step 1:** Write failing loss test:
 ```python
@@ -1247,8 +1247,8 @@ git commit -m "model: add VAE focal+KL loss and training script"
 ### Task 11: Condition-aware Decoder Block (`model/cdb.py`)
 
 **Files:**
-- Create: `citiesgpt/model/cdb.py`
-- Modify: `citiesgpt/tests/test_model.py`
+- Create: `groundwork/model/cdb.py`
+- Modify: `groundwork/tests/test_model.py`
 
 **Step 1:** Write failing tests:
 ```python
@@ -1352,8 +1352,8 @@ git commit -m "model: add Condition-aware Decoder Block (LDE + GCI)"
 ### Task 12: Diffusion U-Net (`model/unet.py`)
 
 **Files:**
-- Create: `citiesgpt/model/unet.py`
-- Modify: `citiesgpt/tests/test_model.py`
+- Create: `groundwork/model/unet.py`
+- Modify: `groundwork/tests/test_model.py`
 
 **Step 1:** Write failing tests:
 ```python
@@ -1512,8 +1512,8 @@ git commit -m "model: add diffusion U-Net with CDB decoder blocks"
 ### Task 13: DDPM training logic (`model/diffusion.py`)
 
 **Files:**
-- Create: `citiesgpt/model/diffusion.py`
-- Modify: `citiesgpt/tests/test_model.py`
+- Create: `groundwork/model/diffusion.py`
+- Modify: `groundwork/tests/test_model.py`
 
 **Step 1:** Write failing tests:
 ```python
@@ -1622,7 +1622,7 @@ git commit -m "model: add DDPM forward/reverse process with CFG and DDIM samplin
 ### Task 14: Diffusion training script (`model/train_diffusion.py`)
 
 **Files:**
-- Create: `citiesgpt/model/train_diffusion.py`
+- Create: `groundwork/model/train_diffusion.py`
 
 **Step 1:** Implement `model/train_diffusion.py`:
 ```python
@@ -1726,8 +1726,8 @@ git commit -m "model: add diffusion training script with frozen VAE encoder"
 ### Task 15: Numeric metrics (`model/eval_metrics.py`)
 
 **Files:**
-- Create: `citiesgpt/model/eval_metrics.py`
-- Modify: `citiesgpt/tests/test_model.py`
+- Create: `groundwork/model/eval_metrics.py`
+- Modify: `groundwork/tests/test_model.py`
 
 **Step 1:** Write failing test:
 ```python
@@ -1838,7 +1838,7 @@ git commit -m "model: add FID/KID/CI/TC evaluation metrics"
 Sends a batch of generated road layout images to the Claude API and gets back a 1–10 realism score plus a list of specific issues. Run every 20 epochs, 10 samples.
 
 **Files:**
-- Create: `citiesgpt/model/vlm_eval.py`
+- Create: `groundwork/model/vlm_eval.py`
 
 **Step 1:** Implement `model/vlm_eval.py`:
 ```python
@@ -1946,7 +1946,7 @@ git commit -m "model: add VLM realism scorer using Claude API"
 ### Task 17: VAE training notebook (`notebooks/train_vae.ipynb`)
 
 **Files:**
-- Create: `citiesgpt/notebooks/train_vae.ipynb`
+- Create: `groundwork/notebooks/train_vae.ipynb`
 
 The notebook should have these cells in order:
 
@@ -1954,7 +1954,7 @@ The notebook should have these cells in order:
 ```python
 from google.colab import drive
 drive.mount('/content/drive')
-%cd '/content/drive/MyDrive/citiesgpt'
+%cd '/content/drive/MyDrive/groundwork'
 !pip install -r requirements.txt -q
 ```
 
@@ -2011,7 +2011,7 @@ git commit -m "notebooks: add VAE training Colab notebook"
 ### Task 18: Diffusion training notebook (`notebooks/train_diffusion.ipynb`)
 
 **Files:**
-- Create: `citiesgpt/notebooks/train_diffusion.ipynb`
+- Create: `groundwork/notebooks/train_diffusion.ipynb`
 
 **Cell 1 — Mount + install:**
 Same as VAE notebook Cell 1.

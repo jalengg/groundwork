@@ -1,4 +1,4 @@
-# CitiesGPT Training Pipeline — Design Document
+# Groundwork Training Pipeline — Design Document
 
 **Date:** 2026-02-28
 **Scope:** Data pipeline + model training only (no mod integration)
