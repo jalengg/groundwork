@@ -1,0 +1,31 @@
+tile_size_px: 512
+pixel_size_m: 5
+n_tiles_per_city: 150
+jitter_fraction: 0.3
+style: us_suburb
+
+cities:
+  - name: arlington_tx
+    query: "Arlington, Texas, USA"
+    split: train
+  - name: chandler_az
+    query: "Chandler, Arizona, USA"
+    split: train
+  - name: gilbert_az
+    query: "Gilbert, Arizona, USA"
+    split: train
+  - name: henderson_nv
+    query: "Henderson, Nevada, USA"
+    split: train
+  - name: mesa_az
+    query: "Mesa, Arizona, USA"
+    split: train
+  - name: tempe_az
+    query: "Tempe, Arizona, USA"
+    split: train
+  - name: plano_tx
+    query: "Plano, Texas, USA"
+    split: train
+  - name: irving_tx
+    query: "Irving, Texas, USA"
+    split: val          # held-out validation city
