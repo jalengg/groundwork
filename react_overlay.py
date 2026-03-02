@@ -121,7 +121,7 @@ def render_frame(frame_idx: int, particles: list[dict], sprites: list[Image.Imag
 
 
 def main():
-    output = "react_overlay.webm"
+    output = "react_overlay.mov"
     sprites = fetch_sprites()
     particles = build_particles()
 
@@ -132,10 +132,9 @@ def main():
         "-s", f"{WIDTH}x{HEIGHT}",
         "-r", str(FPS),
         "-i", "pipe:0",
-        "-vcodec", "libvpx-vp9",
-        "-pix_fmt", "yuva420p",
-        "-b:v", "0",
-        "-crf", "20",
+        "-vcodec", "prores_ks",
+        "-profile:v", "4",          # ProRes 4444 — preserves alpha channel
+        "-pix_fmt", "yuva444p10le",
         "-an",
         output,
     ]
