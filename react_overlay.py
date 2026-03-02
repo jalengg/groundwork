@@ -3,6 +3,7 @@
 
 import math
 import random
+import subprocess
 import sys
 from pathlib import Path
 
@@ -117,3 +118,45 @@ def render_frame(frame_idx: int, particles: list[dict], sprites: list[Image.Imag
         canvas.paste(sprite, (paste_x, paste_y), sprite)
 
     return canvas
+
+
+def main():
+    output = "react_overlay.webm"
+    sprites = fetch_sprites()
+    particles = build_particles()
+
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "rgba",
+        "-s", f"{WIDTH}x{HEIGHT}",
+        "-r", str(FPS),
+        "-i", "pipe:0",
+        "-vcodec", "libvpx-vp9",
+        "-pix_fmt", "yuva420p",
+        "-b:v", "0",
+        "-crf", "20",
+        "-an",
+        output,
+    ]
+
+    print(f"Rendering {TOTAL_FRAMES} frames → {output} ...", file=sys.stderr)
+    proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+
+    try:
+        for frame_idx in range(TOTAL_FRAMES):
+            if frame_idx % 30 == 0:
+                print(f"  frame {frame_idx}/{TOTAL_FRAMES}", file=sys.stderr)
+            frame = render_frame(frame_idx, particles, sprites)
+            proc.stdin.write(frame.tobytes())
+        proc.stdin.close()
+        proc.wait()
+    except BrokenPipeError:
+        print("FFmpeg pipe broke — check FFmpeg output above.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Done: {output}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
