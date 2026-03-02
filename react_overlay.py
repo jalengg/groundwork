@@ -94,3 +94,26 @@ def particle_state(p: dict, cycle_t: float) -> dict:
         alpha *= age_frames / 3.0
 
     return {"x": x, "y": y, "scale": scale, "alpha": alpha}
+
+
+def render_frame(frame_idx: int, particles: list[dict], sprites: list[Image.Image]) -> Image.Image:
+    """Render one RGBA frame."""
+    canvas = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+
+    t = frame_idx / FPS
+    for p in particles:
+        cycle_t = (t + p["phase"]) % DURATION_SEC
+        state = particle_state(p, cycle_t)
+
+        size = max(1, int(EMOJI_SIZE * state["scale"]))
+        sprite = sprites[p["emoji_idx"]].resize((size, size), Image.LANCZOS)
+
+        r, g, b, a = sprite.split()
+        a = a.point(lambda v: int(v * state["alpha"]))
+        sprite = Image.merge("RGBA", (r, g, b, a))
+
+        paste_x = int(state["x"] - size / 2)
+        paste_y = int(state["y"] - size / 2)
+        canvas.paste(sprite, (paste_x, paste_y), sprite)
+
+    return canvas
