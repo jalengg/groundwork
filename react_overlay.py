@@ -68,7 +68,7 @@ def build_particles(seed: int = 42) -> list[dict]:
     for i in range(EMOJI_COUNT):
         particles.append({
             "phase": i * DURATION_SEC / EMOJI_COUNT,
-            "emoji_idx": rng.randint(0, len(EMOJI_CODES) - 1),
+            "emoji_idx": rng.choices(range(len(EMOJI_CODES)), weights=[2, 1, 1, 2], k=1)[0],
             "base_x": base_xs[i],
             "drift_amp": rng.uniform(*DRIFT_AMP_RANGE),
             "drift_freq": rng.uniform(*DRIFT_FREQ_RANGE),
@@ -81,9 +81,9 @@ def particle_state(p: dict, cycle_t: float) -> dict:
     """Compute x, y, scale, alpha for a particle at cycle_t seconds into its cycle."""
     progress = cycle_t / DURATION_SEC
 
-    # Spawn center at canvas bottom; travel upward until off the top
-    travel = HEIGHT + EMOJI_SIZE
-    y = HEIGHT - progress * travel
+    # Spawn fully visible just above bottom edge; travel to just off the top
+    start_y = HEIGHT - EMOJI_SIZE // 2
+    y = start_y - progress * HEIGHT
 
     x = p["base_x"] + p["drift_amp"] * math.sin(
         2 * math.pi * p["drift_freq"] * cycle_t + p["drift_phase"]
