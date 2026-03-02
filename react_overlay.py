@@ -12,18 +12,18 @@ from PIL import Image
 
 # --- Constants (tweak these) ---
 WIDTH = 1080
-HEIGHT = 1920
+HEIGHT = 640
 FPS = 30
 DURATION_SEC = 8
 TOTAL_FRAMES = FPS * DURATION_SEC
 
 EMOJI_COUNT = 20          # simultaneous floating particles
-EMOJI_SIZE = 80           # base px size
+EMOJI_SIZE = 110          # base px size
 SPEED_RANGE = (120, 180)  # px/sec, controls travel time (unused directly; see phase)
 DRIFT_AMP_RANGE = (20, 60)   # px, lateral wobble amplitude
 DRIFT_FREQ_RANGE = (0.3, 0.8)  # Hz, lateral wobble speed
 POP_FRAMES = 12           # frames for pop-in animation (~0.4s)
-FADE_ZONE = HEIGHT * 0.15  # top fraction where emojis fade out
+FADE_OUT_BY = 0.75        # progress fraction at which emoji is fully transparent
 
 EMOJI_CODES = ["1f602", "2764", "1f44d", "1f631"]  # 😂 ❤️ 👍 😱
 SPRITE_DIR = Path("emoji_sprites")
@@ -61,12 +61,15 @@ def pop_scale(age_frames: int) -> float:
 def build_particles(seed: int = 42) -> list[dict]:
     """Build EMOJI_COUNT particles with deterministic random params."""
     rng = random.Random(seed)
+    # Uniform x positions shuffled independently of phase to avoid right-to-left drift
+    base_xs = [WIDTH * (j + 0.5) / EMOJI_COUNT + rng.uniform(-30, 30) for j in range(EMOJI_COUNT)]
+    rng.shuffle(base_xs)
     particles = []
     for i in range(EMOJI_COUNT):
         particles.append({
             "phase": i * DURATION_SEC / EMOJI_COUNT,
             "emoji_idx": rng.randint(0, len(EMOJI_CODES) - 1),
-            "base_x": WIDTH * (i + 0.5) / EMOJI_COUNT + rng.uniform(-30, 30),
+            "base_x": base_xs[i],
             "drift_amp": rng.uniform(*DRIFT_AMP_RANGE),
             "drift_freq": rng.uniform(*DRIFT_FREQ_RANGE),
             "drift_phase": rng.uniform(0, 2 * math.pi),
@@ -78,8 +81,9 @@ def particle_state(p: dict, cycle_t: float) -> dict:
     """Compute x, y, scale, alpha for a particle at cycle_t seconds into its cycle."""
     progress = cycle_t / DURATION_SEC
 
-    travel = HEIGHT + 2 * EMOJI_SIZE
-    y = HEIGHT + EMOJI_SIZE - progress * travel
+    # Spawn center at canvas bottom; travel upward until off the top
+    travel = HEIGHT + EMOJI_SIZE
+    y = HEIGHT - progress * travel
 
     x = p["base_x"] + p["drift_amp"] * math.sin(
         2 * math.pi * p["drift_freq"] * cycle_t + p["drift_phase"]
@@ -88,11 +92,14 @@ def particle_state(p: dict, cycle_t: float) -> dict:
     age_frames = int(cycle_t * FPS)
     scale = pop_scale(age_frames)
 
-    alpha = 1.0
-    if y < FADE_ZONE:
-        alpha = max(0.0, y / FADE_ZONE)
-    if age_frames < 3:
-        alpha *= age_frames / 3.0
+    # Full opacity during pop-in, then fade linearly as emoji rises
+    pop_end = POP_FRAMES / TOTAL_FRAMES
+    if progress <= pop_end:
+        alpha = 1.0
+    elif progress >= FADE_OUT_BY:
+        alpha = 0.0
+    else:
+        alpha = 1.0 - (progress - pop_end) / (FADE_OUT_BY - pop_end)
 
     return {"x": x, "y": y, "scale": scale, "alpha": alpha}
 
