@@ -30,26 +30,27 @@ cities:
   # - name: irving_tx
   #   query: "Irving, Texas, USA"
   #   split: val        # held-out validation city
+  # --- already generated, skip ---
   # Terrain variation
-  - name: bellevue_wa
-    query: "Bellevue, Washington, USA"
-    split: train
-  - name: sandy_ut
-    query: "Sandy, Utah, USA"
-    split: train
-  - name: beaverton_or
-    query: "Beaverton, Oregon, USA"
-    split: train
-  - name: cranberry_township_pa
-    query: "Cranberry Township, Pennsylvania, USA"
-    split: train
+  # - name: bellevue_wa
+  #   query: "Bellevue, Washington, USA"
+  #   split: train
+  # - name: sandy_ut
+  #   query: "Sandy, Utah, USA"
+  #   split: train
+  # - name: beaverton_or
+  #   query: "Beaverton, Oregon, USA"
+  #   split: train
+  # - name: cranberry_township_pa
+  #   query: "Cranberry Township, Pennsylvania, USA"
+  #   split: train
   # Water / no-build interspersed
-  - name: plymouth_mn
-    query: "Plymouth, Minnesota, USA"
-    split: train
-  - name: kissimmee_fl
-    query: "Kissimmee, Florida, USA"
-    split: train
+  # - name: plymouth_mn
+  #   query: "Plymouth, Minnesota, USA"
+  #   split: train
+  # - name: kissimmee_fl
+  #   query: "Kissimmee, Florida, USA"
+  #   split: train
   - name: sugar_land_tx
     query: "Sugar Land, Texas, USA"
     split: train
