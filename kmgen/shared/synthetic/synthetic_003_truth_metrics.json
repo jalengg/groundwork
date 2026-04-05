@@ -1,0 +1,31 @@
+{
+  "score": 1.0,
+  "iae": 0.0,
+  "ae_median": 0.0,
+  "median_os_error": 0.0,
+  "n_arms": 2,
+  "arms": [
+    {
+      "label_extracted": "Drug A",
+      "label_truth": "Drug A",
+      "iae": 0.0,
+      "ae_median": 0.0,
+      "ae_mean": 0.0,
+      "ae_max": 0.0,
+      "median_os_error": 0.0,
+      "n_steps_extracted": 52,
+      "n_steps_truth": 52
+    },
+    {
+      "label_extracted": "Placebo",
+      "label_truth": "Placebo",
+      "iae": 0.0,
+      "ae_median": 0.0,
+      "ae_mean": 0.0,
+      "ae_max": 0.0,
+      "median_os_error": 0.0,
+      "n_steps_extracted": 67,
+      "n_steps_truth": 67
+    }
+  ]
+}

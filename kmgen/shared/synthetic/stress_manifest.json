@@ -1,0 +1,314 @@
+{
+  "description": "Adversarial stress test variants of real KM plot images",
+  "total_files": 35,
+  "files": [
+    {
+      "file": "stress_img1_blurry.png",
+      "source": "image1.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img1_jpeg.png",
+      "source": "image1.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img1_bw.png",
+      "source": "image1.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img1_tiny.png",
+      "source": "image1.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          1000,
+          666
+        ],
+        "new_size": [
+          250,
+          166
+        ]
+      }
+    },
+    {
+      "file": "stress_img1_dark.png",
+      "source": "image1.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    },
+    {
+      "file": "stress_img2_blurry.png",
+      "source": "image2.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img2_jpeg.png",
+      "source": "image2.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img2_bw.png",
+      "source": "image2.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img2_tiny.png",
+      "source": "image2.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          520,
+          324
+        ],
+        "new_size": [
+          130,
+          81
+        ]
+      }
+    },
+    {
+      "file": "stress_img2_dark.png",
+      "source": "image2.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    },
+    {
+      "file": "stress_img3_blurry.png",
+      "source": "image3.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img3_jpeg.png",
+      "source": "image3.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img3_bw.png",
+      "source": "image3.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img3_tiny.png",
+      "source": "image3.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          1999,
+          948
+        ],
+        "new_size": [
+          499,
+          237
+        ]
+      }
+    },
+    {
+      "file": "stress_img3_dark.png",
+      "source": "image3.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    },
+    {
+      "file": "stress_img4_blurry.png",
+      "source": "image4.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img4_jpeg.png",
+      "source": "image4.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img4_bw.png",
+      "source": "image4.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img4_tiny.png",
+      "source": "image4.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          1999,
+          698
+        ],
+        "new_size": [
+          499,
+          174
+        ]
+      }
+    },
+    {
+      "file": "stress_img4_dark.png",
+      "source": "image4.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    },
+    {
+      "file": "stress_img5_blurry.png",
+      "source": "image5.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img5_jpeg.png",
+      "source": "image5.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img5_bw.png",
+      "source": "image5.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img5_tiny.png",
+      "source": "image5.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          1000,
+          702
+        ],
+        "new_size": [
+          250,
+          175
+        ]
+      }
+    },
+    {
+      "file": "stress_img5_dark.png",
+      "source": "image5.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    },
+    {
+      "file": "stress_img6_blurry.png",
+      "source": "image6.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img6_jpeg.png",
+      "source": "image6.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img6_bw.png",
+      "source": "image6.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img6_tiny.png",
+      "source": "image6.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          1999,
+          1001
+        ],
+        "new_size": [
+          499,
+          250
+        ]
+      }
+    },
+    {
+      "file": "stress_img6_dark.png",
+      "source": "image6.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    },
+    {
+      "file": "stress_img7_blurry.png",
+      "source": "image7.png",
+      "degradation": "gaussian_blur",
+      "params": {
+        "radius": 2.5
+      }
+    },
+    {
+      "file": "stress_img7_jpeg.png",
+      "source": "image7.png",
+      "degradation": "jpeg_compression",
+      "params": {
+        "quality": 20
+      }
+    },
+    {
+      "file": "stress_img7_bw.png",
+      "source": "image7.png",
+      "degradation": "grayscale"
+    },
+    {
+      "file": "stress_img7_tiny.png",
+      "source": "image7.png",
+      "degradation": "resize_25pct",
+      "params": {
+        "original_size": [
+          1776,
+          670
+        ],
+        "new_size": [
+          444,
+          167
+        ]
+      }
+    },
+    {
+      "file": "stress_img7_dark.png",
+      "source": "image7.png",
+      "degradation": "reduced_brightness",
+      "params": {
+        "factor": 0.6
+      }
+    }
+  ]
+}
