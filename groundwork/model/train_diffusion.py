@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--output", default="checkpoints/diffusion/")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch", type=int, default=4)
-    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--resume", default=None)
     args = parser.parse_args()
 
@@ -69,7 +69,7 @@ def main():
             with torch.no_grad():
                 mu, logvar = vae.encode(road)
                 x0 = vae.reparameterize(mu, logvar)
-            loss = ddpm.training_loss(net, x0, cond, cfg_prob=0.5)
+            loss = ddpm.training_loss(net, x0, cond, cfg_prob=0.1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
