@@ -1,12 +1,11 @@
 """
-KMGen Benchmark Report Generator
+KMGen Benchmark Report Generator (V3 — Self-Correction)
 
 Generates an HTML report with:
-- Side-by-side comparison: original plot vs annotated extraction
-- IAE scores and area-between-curves visualization
-- Synthetic data parameters
-- Per-arm detailed metrics
-- Human annotation checkboxes for visual verification
+- Top 15 worst-performing plots shown in full detail
+- Reasoning progression: image analysis -> technique -> diagnostics -> correction
+- Attempt 1 vs Attempt 2 comparison with IAE deltas
+- Collapsed rows for well-performing plots
 
 Usage:
     python report.py [--benchmark-dir /path/to/benchmark] [--output report.html]
@@ -15,10 +14,65 @@ Usage:
 import argparse
 import base64
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+
+TOP_N = 15  # Number of worst-performing plots to show in full
+
+
+def parse_diagnosis(text: str) -> dict:
+    """Parse diagnosis.txt into 4 sections matching V3 prompt format.
+
+    Maps to user's 4 questions:
+      1. image_analysis — what challenges/obstacles the multimodal head observed
+      2. technique_selection — what tools/techniques chosen and why/why not
+      3. diagnostic_interpretation — interpretation of the diagnostic data
+      4. corrections — what corrections made and why
+
+    Handles both STEP N and SECTION N header formats.
+    """
+    # Try SECTION N format first (V3), then STEP N (V2)
+    section_pattern = r'(?:SECTION|STEP)\s+(\d)\s*[-—]+\s*(.*?)(?=\n(?:SECTION|STEP)\s+\d\s*[-—]|\Z)'
+    matches = list(re.finditer(section_pattern, text, re.DOTALL | re.IGNORECASE))
+
+    if len(matches) < 2:
+        return {"raw": text.strip()}
+
+    # Map section numbers to keys
+    key_map = {
+        1: "image_analysis",
+        2: "technique_selection",
+        3: "diagnostic_interpretation",
+        4: "corrections",
+    }
+
+    result = {}
+    for m in matches:
+        num = int(m.group(1))
+        full_block = m.group(2).strip()
+        # Remove the header label line (e.g., "IMAGE ANALYSIS" or "DIAGNOSE")
+        lines = full_block.split('\n')
+        body = '\n'.join(lines[1:]).strip() if len(lines) > 1 else full_block
+
+        key = key_map.get(num)
+        if key:
+            # For corrections section, strip code blocks — keep only reasoning
+            if key == "corrections":
+                code_match = re.search(r'```', body)
+                if code_match:
+                    body = body[:code_match.start()].strip()
+            result[key] = body
+
+    # Backwards compat: map old keys for V2 diagnosis files
+    if "image_analysis" not in result and len(matches) >= 1:
+        result.setdefault("image_analysis", result.get("diagnose", ""))
+    if "technique_selection" not in result and len(matches) >= 2:
+        result.setdefault("technique_selection", result.get("plan", ""))
+
+    return result
 
 
 def img_to_base64(path: Path) -> str:
@@ -183,6 +237,19 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
                 hp = diag_dir / f"arm{arm_idx}_heatmap.png"
                 if hp.exists():
                     entry["diag_heatmaps"][arm_idx] = img_to_base64(hp)
+                # V2 images: mask, profiles, strategies, coverage
+                for img_type in ["mask", "profiles", "strategies", "coverage"]:
+                    ip = diag_dir / f"arm{arm_idx}_{img_type}.png"
+                    if ip.exists():
+                        entry.setdefault("diag_v2_images", {}).setdefault(arm_idx, {})[img_type] = img_to_base64(ip)
+            # Full annotated image with bbox
+            fa = diag_dir / "full_annotated.png"
+            if fa.exists():
+                entry["diag_full_annotated"] = img_to_base64(fa)
+            # Diagnosis text from correction agent
+            dt = diag_dir / "diagnosis.txt"
+            if dt.exists():
+                entry["diagnosis_text"] = dt.read_text()
         else:
             entry["diagnostic"] = None
 
@@ -277,6 +344,16 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
   .delta-improved {{ color: #2E7D32; font-weight: bold; }}
   .delta-worse {{ color: #C62828; font-weight: bold; }}
   .delta-same {{ color: #888; }}
+  .plot-card.collapsed {{ padding: 8px 16px; margin-bottom: 4px; display: flex; gap: 16px; align-items: center; }}
+  .reasoning-section {{ margin: 14px 0; padding: 12px 16px; background: #FAFAFA; border-left: 3px solid #90CAF9; border-radius: 0 6px 6px 0; }}
+  .reasoning-section h4 {{ font-size: 13px; color: #1565C0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }}
+  .reasoning-section pre {{ font-size: 12px; white-space: pre-wrap; line-height: 1.5; color: #444; }}
+  .diag-grid-2x2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }}
+  .diag-grid-2x2 img {{ width: 100%; border: 1px solid #ccc; border-radius: 4px; }}
+  .diag-grid-2x2 .label {{ font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 2px; }}
+  .worst-strip {{ display: inline-block; margin: 4px; text-align: center; }}
+  .worst-strip img {{ height: 90px; border: 1px solid #ccc; border-radius: 2px; }}
+  .worst-strip .strip-label {{ font-size: 10px; color: #666; margin-top: 2px; }}
 </style>
 </head>
 <body>
@@ -307,7 +384,7 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
 </div>
 
 <table style="margin-top:16px;">
-<tr><th>Plot</th><th>Type</th><th>IAE</th><th>Median AE</th><th>Median OS Err</th><th>Arms</th></tr>
+<tr><th>Plot</th><th>Type</th><th>IAE</th><th>Attempt 2 IAE</th><th>Delta</th><th>Median AE</th><th>Median OS Err</th><th>Arms</th></tr>
 """
 
     for r in results:
@@ -321,10 +398,31 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
         os_err = f"{m.get('median_os_error', 0):.2f}" if m else "—"
         n_arms = m.get("n_arms", "—")
 
+        # Attempt 2 columns
+        a2m = r.get("attempt2_metrics")
+        if a2m:
+            a2_iae = a2m.get("iae", None)
+            a2_str = f"{a2_iae:.4f}" if a2_iae is not None else "—"
+            if iae is not None and a2_iae is not None:
+                delta = a2_iae - iae
+                if delta < -0.001:
+                    delta_str = f'<span class="delta-improved">{delta:+.4f}</span>'
+                elif delta > 0.001:
+                    delta_str = f'<span class="delta-worse">{delta:+.4f}</span>'
+                else:
+                    delta_str = f'<span class="delta-same">{delta:+.4f}</span>'
+            else:
+                delta_str = "—"
+        else:
+            a2_str = "—"
+            delta_str = "—"
+
         html += f"""<tr>
   <td><strong>{r['name']}</strong></td>
   <td><span class="tag {tag_class}">{tag_label}</span></td>
   <td class="{iae_class}"><strong>{iae_str}</strong></td>
+  <td>{a2_str}</td>
+  <td>{delta_str}</td>
   <td>{ae_med}</td>
   <td>{os_err}</td>
   <td>{n_arms}</td>
@@ -334,22 +432,50 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
 </div>
 """
 
-    # Individual plot cards
-    for r in results:
+    # Sort results by IAE descending for top-N selection
+    sorted_results = sorted(results, key=lambda r: r["metrics"].get("iae", 0) or 0, reverse=True)
+    top_results = sorted_results[:TOP_N]
+    rest_results = sorted_results[TOP_N:]
+
+    # Collapsed rows for well-performing plots
+    if rest_results:
+        html += '<h2>Below Threshold (diagnostics skipped)</h2>\n'
+        for r in rest_results:
+            iae = r["metrics"].get("iae", 0) or 0
+            html += f"""<div class="plot-card collapsed">
+  <span><strong>{r['name']}</strong></span> <span class="iae-good">IAE: {iae:.4f}</span>
+  <span style="color:#888;">(below threshold — diagnostics skipped)</span>
+</div>\n"""
+
+    # Full cards for top N worst-performing plots
+    html += f'<h2>Top {min(TOP_N, len(top_results))} Worst-Performing Plots (by Attempt 1 IAE)</h2>\n'
+
+    for r in top_results:
         card_class = "edge" if r["is_edge_case"] else "standard"
         m = r["metrics"]
         iae = m.get("iae", None)
         iae_str = f"{iae:.4f}" if iae is not None else "N/A"
 
+        # Header with IAE + attempt 2 delta
+        a2m = r.get("attempt2_metrics")
+        delta_html = ""
+        if a2m:
+            a2_iae = a2m.get("iae", None)
+            if iae is not None and a2_iae is not None:
+                delta = a2_iae - iae
+                pct = (delta / iae * 100) if iae > 0 else 0
+                if delta < -0.001:
+                    delta_html = f' <span class="delta-improved">Attempt 2: {a2_iae:.4f} ({delta:+.4f}, {pct:+.0f}%)</span>'
+                elif delta > 0.001:
+                    delta_html = f' <span class="delta-worse">Attempt 2: {a2_iae:.4f} ({delta:+.4f}, +{abs(pct):.0f}%)</span>'
+                else:
+                    delta_html = f' <span class="delta-same">Attempt 2: {a2_iae:.4f} (no change)</span>'
+
         html += f"""
 <div class="plot-card {card_class}">
-<h3>{r['name']} <span class="tag {'tag-edge' if r['is_edge_case'] else 'tag-standard'}">{'edge' if r['is_edge_case'] else 'standard'}</span></h3>
-
-<div class="metrics-row">
-  <div class="metric">IAE: <span class="val">{iae_str}</span></div>
-  <div class="metric">Median AE: <span class="val">{m.get('ae_median', 'N/A')}</span></div>
-  <div class="metric">Median OS Error: <span class="val">{m.get('median_os_error', 'N/A')}</span></div>
-</div>
+<h3>{r['name']} <span class="tag {'tag-edge' if r['is_edge_case'] else 'tag-standard'}">{'edge' if r['is_edge_case'] else 'standard'}</span>
+  — IAE: <span class="{'iae-good' if iae and iae < 0.03 else ('iae-ok' if iae and iae < 0.06 else 'iae-bad')}">{iae_str}</span>{delta_html}
+</h3>
 
 <div class="plot-images">
   <div>
@@ -357,98 +483,143 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
     <img src="{r['original_img']}" alt="Original plot" />
   </div>
   <div>
-    <div class="label">Extracted (annotated)</div>
+    <div class="label">Attempt 1 — Extracted (annotated)</div>
     <img src="{r['annotation_img']}" alt="Annotated extraction" />
   </div>
 </div>
-
-{r.get('area_svg', '')}
 """
 
-        # Per-arm details
-        if m.get("arms"):
-            html += "<h3>Per-Arm Details</h3>\n"
-            for arm in m["arms"]:
-                html += f"""<div class="arm-detail">
-  <strong>{arm.get('label_truth', 'Arm')}</strong>:
-  IAE={arm.get('iae', 0):.4f},
-  AE median={arm.get('ae_median', 0):.4f},
-  AE max={arm.get('ae_max', 0):.4f},
-  Steps: {arm.get('n_steps_extracted', '?')} extracted / {arm.get('n_steps_truth', '?')} truth,
-  Median OS err={arm.get('median_os_error', 0):.2f}
-</div>\n"""
+        # Parse diagnosis.txt into reasoning sections
+        diag_sections = {}
+        if r.get("diagnosis_text"):
+            diag_sections = parse_diagnosis(r["diagnosis_text"])
 
-        # Synthetic data info
-        truth = r.get("truth", {})
-        if truth:
-            axis = truth.get("axis", {})
-            html += f"""<div class="arm-detail" style="margin-top:8px;">
-  <strong>Synthetic data:</strong>
-  x_max={axis.get('x_max', '?')},
-  y_range=[{axis.get('y_min', 0)}, {axis.get('y_max', 1.0)}],
-  {len(truth.get('arms', []))} arms,
-  total truth steps: {sum(len(a.get('coordinates', a.get('steps', []))) for a in truth.get('arms', []))}
-</div>\n"""
+        # --- Section 1: Image Analysis ---
+        if diag_sections.get("image_analysis"):
+            html += '<div class="reasoning-section">\n'
+            html += '<h4>1. Image Analysis — What the agent observed</h4>\n'
+            html += f'<pre>{diag_sections["image_analysis"]}</pre>\n'
+            html += '</div>\n'
+        elif diag_sections.get("raw"):
+            html += '<div class="reasoning-section">\n'
+            html += '<h4>Agent Diagnosis (unstructured)</h4>\n'
+            html += f'<pre>{diag_sections["raw"]}</pre>\n'
+            html += '</div>\n'
 
-        # Diagnostic dashboard section
+        # --- Section 2: Technique Selection ---
+        if diag_sections.get("technique_selection"):
+            html += '<div class="reasoning-section" style="border-left-color:#66BB6A;">\n'
+            html += '<h4>2. Technique Selection — Tools chosen and why</h4>\n'
+            html += f'<pre>{diag_sections["technique_selection"]}</pre>\n'
+            html += '</div>\n'
+
+        # --- Diagnostic Evidence ---
         if r.get("diagnostic"):
             diag = r["diagnostic"]
-            html += '<div class="diagnostic-section">\n<h4>Diagnostic Dashboard (Self-Correction Input)</h4>\n'
+            html += '<div class="diagnostic-section">\n<h4>Diagnostic Evidence</h4>\n'
 
             for arm_data in diag.get("arms", []):
                 arm_idx = arm_data.get("arm_index", 0)
                 label = arm_data.get("label", f"Arm {arm_idx}")
                 bias = arm_data.get("mean_bias_px", 0)
-                asym = arm_data.get("mean_asymmetry", 0)
-                hit = arm_data.get("overall_hit_rate", 0)
                 direction = arm_data.get("bias_direction", "unknown")
 
                 html += f'<h4 style="margin-top:10px;">{label} — bias: {bias:+.1f}px ({direction})</h4>\n'
                 html += '<div class="diag-stats">\n'
+                asym = arm_data.get("mean_asymmetry", 0)
+                hit = arm_data.get("overall_hit_rate", 0)
+                cov = arm_data.get("mean_coverage") or 0
+                agree = arm_data.get("strategy_agreement") or 0
                 html += f'  <div class="diag-stat">Bias: <span class="val">{bias:+.1f}px</span></div>\n'
                 html += f'  <div class="diag-stat">Asymmetry: <span class="val">{asym:.2f}</span></div>\n'
                 html += f'  <div class="diag-stat">Hit rate: <span class="val">{hit:.2f}</span></div>\n'
+                html += f'  <div class="diag-stat">Coverage: <span class="val">{cov:.1f}px</span></div>\n'
+                html += f'  <div class="diag-stat">Strategy agree: <span class="val">{agree:.0%}</span></div>\n'
                 html += '</div>\n'
 
-                # Heatmap
-                hm = r.get("diag_heatmaps", {}).get(arm_idx, "")
-                if hm:
-                    html += f'<div class="label">Residual heatmap</div>\n'
-                    html += f'<img class="heatmap-img" src="{hm}" alt="Residual heatmap" />\n'
-
-                # Strip gallery
-                strips = r.get("diag_strips", {}).get(arm_idx, [])
-                if strips:
-                    html += f'<div class="label">Zoomed strips (6x) — red=extracted, green=centroid</div>\n'
-                    html += '<div class="strip-gallery">\n'
-                    for s_img in strips:
-                        html += f'  <img src="{s_img}" />\n'
+                # V2 images in 2x2 grid: mask, strategies, profiles, coverage
+                v2_imgs = r.get("diag_v2_images", {}).get(arm_idx, {})
+                if v2_imgs:
+                    html += '<div class="diag-grid-2x2">\n'
+                    for img_type, img_label in [("mask", "Color Mask"),
+                                                 ("strategies", "Multi-Strategy"),
+                                                 ("profiles", "Perpendicular Profiles"),
+                                                 ("coverage", "Coverage Map")]:
+                        if img_type in v2_imgs:
+                            html += f'  <div><div class="label">{img_label}</div><img src="{v2_imgs[img_type]}" /></div>\n'
                     html += '</div>\n'
 
-                # Strip stats table
+                # Residual heatmap (bias trend)
+                hm = r.get("diag_heatmaps", {}).get(arm_idx, "")
+                if hm:
+                    html += f'<div class="label">Bias trend — Residual heatmap</div>\n'
+                    html += f'<img class="heatmap-img" src="{hm}" alt="Residual heatmap" />\n'
+
+                # Top 3 worst strips only (sorted by |bias_px|)
                 strip_data = arm_data.get("strips", [])
+                strips_imgs = r.get("diag_strips", {}).get(arm_idx, [])
+                if strip_data and strips_imgs:
+                    # Sort strips by absolute bias, take top 3
+                    indexed_strips = [(i, sd) for i, sd in enumerate(strip_data)]
+                    indexed_strips.sort(key=lambda x: abs(x[1].get("bias_px", 0) or 0), reverse=True)
+                    worst_3 = indexed_strips[:3]
+
+                    html += '<div class="label">Worst strips (by |bias|)</div>\n'
+                    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;">\n'
+                    for strip_idx, sd in worst_3:
+                        if strip_idx < len(strips_imgs):
+                            b = sd.get("bias_px", 0) or 0
+                            t_range = sd.get("t_range", [0, 0])
+                            html += f'<div class="worst-strip">\n'
+                            html += f'  <img src="{strips_imgs[strip_idx]}" />\n'
+                            html += f'  <div class="strip-label">t={t_range[0]:.1f}-{t_range[1]:.1f}, bias={b:+.1f}px</div>\n'
+                            html += f'</div>\n'
+                    html += '</div>\n'
+
+                # Strip details table (collapsed)
                 if strip_data:
-                    html += '<details><summary style="font-size:12px;cursor:pointer;margin:6px 0;">Strip details table</summary>\n'
+                    html += '<details><summary style="font-size:12px;cursor:pointer;margin:6px 0;">All strip details</summary>\n'
                     html += '<table class="strip-table"><tr><th>#</th><th>t range</th><th>bias (px)</th><th>asym</th><th>hit rate</th><th>verdict</th></tr>\n'
                     for sd in strip_data:
-                        b = sd.get("bias_px", 0)
+                        b = sd.get("bias_px", 0) or 0
+                        asym_v = sd.get("asymmetry", 0) or 0
+                        phr = sd.get("pixel_hit_rate", 0) or 0
                         verdict = "OK" if abs(b) < 1.5 else ("WARN" if abs(b) < 3 else "ERROR")
                         v_color = "#4CAF50" if verdict == "OK" else ("#FF9800" if verdict == "WARN" else "#f44336")
                         t_range = sd.get("t_range", [0, 0])
                         html += f'<tr><td>{sd.get("strip", "?")}</td><td>{t_range[0]:.1f}–{t_range[1]:.1f}</td>'
-                        html += f'<td>{b:+.1f}</td><td>{sd.get("asymmetry", 0):.2f}</td>'
-                        html += f'<td>{sd.get("pixel_hit_rate", 0):.2f}</td>'
+                        html += f'<td>{b:+.1f}</td><td>{asym_v:.2f}</td>'
+                        html += f'<td>{phr:.2f}</td>'
                         html += f'<td style="color:{v_color};font-weight:bold;">{verdict}</td></tr>\n'
                     html += '</table></details>\n'
 
             html += '</div>\n'
 
-        # Attempt 2 comparison section
+        # --- Section 3: Diagnostic Interpretation ---
+        if diag_sections.get("diagnostic_interpretation"):
+            html += '<div class="reasoning-section" style="border-left-color:#42A5F5;">\n'
+            html += '<h4>3. Diagnostic Interpretation — What the data means</h4>\n'
+            html += f'<pre>{diag_sections["diagnostic_interpretation"]}</pre>\n'
+            html += '</div>\n'
+
+        # --- Section 4: Corrections Applied ---
+        if diag_sections.get("corrections"):
+            html += '<div class="reasoning-section" style="border-left-color:#FF9800;">\n'
+            html += '<h4>4. Corrections Applied — What was changed and why</h4>\n'
+            html += f'<pre>{diag_sections["corrections"]}</pre>\n'
+            html += '</div>\n'
+        elif diag_sections.get("code_reasoning"):
+            html += '<div class="reasoning-section" style="border-left-color:#FF9800;">\n'
+            html += '<h4>4. Corrections Applied</h4>\n'
+            html += f'<pre>{diag_sections["code_reasoning"]}</pre>\n'
+            html += '</div>\n'
+
+        # --- Attempt 1 vs Attempt 2 side-by-side + IAE comparison ---
         if r.get("attempt2_metrics"):
             a1_iae = m.get("iae", None)
             a2_iae = r["attempt2_metrics"].get("iae", None)
 
-            html += '<div class="attempt-comparison">\n<h4>Self-Correction Result (Attempt 2 — blind, no ground truth)</h4>\n'
+            html += '<div class="attempt-comparison">\n<h4>Attempt 1 vs Attempt 2</h4>\n'
 
             if a1_iae is not None and a2_iae is not None:
                 delta = a2_iae - a1_iae
@@ -475,24 +646,23 @@ def generate_report(benchmark_dir: Path, synthetic_dir: Path, output_path: Path)
             html += f'  <div><div class="label">Attempt 2 (self-corrected)</div><img src="{a2_img}" /></div>\n'
             html += '</div>\n'
 
+            # Area-between-curves SVGs for both attempts
+            a1_svg = r.get("area_svg", "")
             a2_svg = r.get("attempt2_area_svg", "")
+            if a1_svg:
+                html += '<h4 style="margin-top:10px;">Attempt 1 — Area Between Curves</h4>\n'
+                html += a1_svg
             if a2_svg:
                 html += '<h4 style="margin-top:10px;">Attempt 2 — Area Between Curves</h4>\n'
                 html += a2_svg
 
             html += '</div>\n'
+        else:
+            # No attempt 2 — still show the area chart for attempt 1
+            if r.get("area_svg"):
+                html += r["area_svg"]
 
-        # Human annotation section
-        html += f"""
-<div class="human-check">
-  <label><input type="checkbox" id="check_{r['name']}_accurate" /> Extraction looks visually accurate</label><br/>
-  <label><input type="checkbox" id="check_{r['name']}_steps" /> Step-downs correctly identified</label><br/>
-  <label><input type="checkbox" id="check_{r['name']}_colors" /> Curve separation correct</label><br/>
-  <label><input type="checkbox" id="check_{r['name']}_bbox" /> Bounding box aligned</label><br/>
-  <textarea id="notes_{r['name']}" rows="2" placeholder="Notes (missed steps, false positives, issues...)"></textarea>
-</div>
-</div>
-"""
+        html += '</div>\n'
 
     html += """
 </div>

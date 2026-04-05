@@ -42,33 +42,115 @@ except ImportError:
 
 # ─── Prompt composition ───
 
+def _sample_coords(coords, max_points=100):
+    """Downsample coordinate list to at most max_points, evenly spaced."""
+    if len(coords) <= max_points:
+        return coords
+    step = len(coords) / max_points
+    return [coords[int(i * step)] for i in range(max_points)]
+
+
 def compose_correction_prompt(plot_name, extraction, diagnostic):
     """
-    Build the prompt for the blind correction agent.
+    Build the V3 reasoning-first correction prompt for the blind correction agent.
 
-    The agent sees: diagnostic stats, extraction config, original image,
-    and annotation overlay. It NEVER sees ground truth, IAE, or truth JSON.
+    The agent sees: diagnostic images, attempt 1 coordinates, diagnostic stats.
+    It NEVER sees ground truth, IAE, or truth JSON.
+
+    V3 changes over V2:
+    - Forces 4 structured sections (image analysis, technique selection,
+      diagnostic interpretation, corrections+reasoning) BEFORE code
+    - Only shows global stats + worst strips (not all 20)
+    - Mentions line styles explicitly for black_solid / black_dashed arms
+    - Includes strategy agreement percentage and centroid technique guidance
     """
     parts = []
 
-    # System context
-    parts.append("""You are a KM curve extraction specialist. You are given:
-1. An extraction attempt with diagnostic measurements showing potential biases
-2. The original plot image and annotated overlay
-3. A diagnostic dashboard with zoomed strips and residual heatmaps
+    # ── Arm color/style info for the prompt ──
+    arm_infos = []
+    for arm in extraction.get('arms', []):
+        color = arm.get('color', 'unknown')
+        label = arm.get('label', 'unknown')
+        style_note = ''
+        if 'dashed' in color:
+            style_note = ' (DASHED line — periodic gaps that tracer must bridge, not treat as separate segments)'
+        elif 'solid' in color:
+            style_note = ' (SOLID line)'
+        arm_infos.append({'label': label, 'color': color, 'style_note': style_note})
 
-Your job: write corrected Python extraction code that fixes the identified issues.
+    # ── System context with V3 4-section reasoning format ──
+    parts.append("""You are a KM curve extraction specialist performing blind quality improvement.
 
-IMPORTANT: You do NOT have access to ground truth data. Use ONLY the diagnostic
-measurements and visual evidence to guide corrections.
+You will analyze this Kaplan-Meier survival plot and its extraction diagnostic data.
+Output your analysis in 4 clearly-labeled sections, then the corrected code.
 
-Output a single Python function:
-  def corrected_extract(image_path, bbox, axis):
-      # ... your code ...
-      return {"arms": [{"label": "...", "coordinates": [{"t": ..., "s": ...}, ...]}]}
+You do NOT have access to ground truth data. Use ONLY the image, annotation,
+and diagnostic measurements.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+SECTION 1 \u2014 IMAGE ANALYSIS
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+Describe what you observe about this plot:
+- How many curves? What colors?
+- Line styles: solid, dashed, dotted? (This matters \u2014 dashed lines have periodic
+  gaps that the tracer must bridge, not treat as separate segments)
+- Image quality: blur, JPEG artifacts, darkness, resolution?
+- Annotations, legends, gridlines inside the plot area?
+- Dense zones (smooth diagonal) vs steppy zones (clear horizontal segments)?
+- Do curves overlap? Where?
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+SECTION 2 \u2014 TECHNIQUE SELECTION
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+For each technique, state whether you'll use it and WHY or WHY NOT:
+
+a) Pixel selection strategy:
+   - Topmost pixel: good for sharp step-function segments (value IS at top of step)
+   - Centroid: good for diagonal/dense zones and blurry images (unbiased under symmetric blur)
+   - Gaussian fit: sub-pixel precision by fitting a Gaussian to the perpendicular intensity profile
+   - Skeleton (morphological thinning): finds the true centerline, robust to line thickness
+   \u2192 Which will you use for which regions, and why?
+
+b) Dashed line handling:
+   - Are any curves dashed? If so, how will you bridge gaps?
+   - Gap detection: how do you distinguish a dash gap from the curve ending?
+
+c) Color mask strategy:
+   - HSL vs RGB thresholds? Loose vs strict?
+   - Will legend/annotation text contaminate the mask?
+
+d) What you are specifically NOT doing and why.
+
+Consider using Gaussian fit, skeleton centerline, or edge-midpoint instead of
+simple topmost pixel or mean centroid for better precision.
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+SECTION 3 \u2014 DIAGNOSTIC INTERPRETATION
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+Based on the diagnostic measurements:
+- What is the overall bias PATTERN? (not per-strip numbers, the trend)
+- Where do topmost/centroid/skeleton strategies DISAGREE? What does that mean?
+- Are there catastrophic regions (arm jumps, annotation contamination)?
+- What is the coverage telling you about mask quality?
+
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+SECTION 4 \u2014 CORRECTIONS AND REASONING
+\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+For each correction you'll make:
+- What diagnostic evidence motivated this correction?
+- What technique are you applying?
+- What is the expected impact?
+
+Then provide the corrected code:
+
+def corrected_extract(image_path, bbox, axis, attempt1_coords):
+    # attempt1_coords is a list of arm dicts:
+    #   [{"label": "...", "coordinates": [{"t": ..., "s": ...}, ...]}, ...]
+    # Apply targeted fixes based on your diagnosis
+    # Return same format: {"arms": [{"label": "...", "coordinates": [...]}, ...]}
+    ...
 
 Available imports: numpy, PIL (Image, ImageDraw), pathlib, json
-The image should be opened, optionally upscaled, and curves traced.
 bbox = [left, top, right, bottom] in upscaled pixel coordinates.
 axis = {"x_min": 0, "x_max": N, "y_min": 0.0, "y_max": 1.0}
 
@@ -78,57 +160,98 @@ Guidelines:
 - Each coordinate should have "t" (time) and "s" (survival) keys
 - Return ALL arms present in the plot
 - Focus corrections on the strips flagged as WARN or ERROR in the diagnostics
+- ADJUST the attempt 1 coordinates — do not rewrite extraction from scratch
 """)
 
-    # Diagnostic summary per arm
+    # ── Diagnostic image references ──
+    parts.append(f"""
+=== DIAGNOSTIC IMAGES (view these for visual evidence) ===
+  Original plot:     benchmark/{plot_name}/original.png
+  Attempt 1 overlay: benchmark/{plot_name}/annotation.png
+  Full annotated:    benchmark/{plot_name}/diagnostic/full_annotated.png""")
+
+    num_arms = len(extraction.get('arms', []))
+    for i in range(num_arms):
+        parts.append(f"""  Arm {i} color mask:  benchmark/{plot_name}/diagnostic/arm{i}_mask.png
+  Arm {i} profiles:    benchmark/{plot_name}/diagnostic/arm{i}_profiles.png
+  Arm {i} strategies:  benchmark/{plot_name}/diagnostic/arm{i}_strategies.png
+  Arm {i} coverage:    benchmark/{plot_name}/diagnostic/arm{i}_coverage.png""")
+
+    # ── Diagnostic summary per arm (global stats + worst strips only) ──
     if 'arms' in diagnostic:
-        for arm in diagnostic['arms']:
-            stats = arm.get('global_stats', {})
+        for arm_diag in diagnostic['arms']:
+            # V2 schema: stats at arm level; V1: nested in global_stats
+            stats = arm_diag.get('global_stats') or arm_diag
+            mb = stats.get('mean_bias_px') or 0.0
+            ma = stats.get('mean_asymmetry') or 0.0
+            hr = stats.get('overall_hit_rate') or 0.0
+            bd = stats.get('bias_direction') or 'unknown'
+            mc = stats.get('mean_coverage') or 0.0
+            sa = stats.get('strategy_agreement') or 0.0
+
+            # Find matching extraction arm for color/style info
+            arm_label = arm_diag['label']
+            arm_color = 'unknown'
+            style_desc = ''
+            for ai in arm_infos:
+                if ai['label'] == arm_label:
+                    arm_color = ai['color']
+                    style_desc = ai['style_note']
+                    break
+
             parts.append(f"""
---- Arm: {arm['label']} (color: {arm.get('color', 'unknown')}) ---
+=== Arm: {arm_label} (color: {arm_color}){style_desc} ===
 Global stats:
-  Mean bias: {stats.get('mean_bias_px', 0):+.1f}px ({stats.get('bias_direction', 'unknown')})
-  Mean asymmetry: {stats.get('mean_asymmetry', 0):.2f} (0=centered, 1=fully one-sided)
-  Pixel hit rate: {stats.get('overall_hit_rate', 0):.2f}
-  Max bias: {stats.get('max_bias_px', 'N/A')}px
+  Mean bias: {mb:+.1f}px ({bd})
+  Mean asymmetry: {ma:.2f} (0=centered, 1=fully one-sided)
+  Pixel hit rate: {hr:.2f}
+  Mean coverage: {mc:.1f}px
+  Strategy agreement: {sa:.1%} (topmost vs centroid within 2px)""")
 
-Per-strip analysis:""")
-            for strip in arm.get('strips', []):
-                bias = strip.get('bias_px', 0)
-                verdict = "OK" if abs(bias) < 1.5 else ("WARN" if abs(bias) < 3 else "ERROR")
-                t_lo, t_hi = strip.get('t_range', (0, 0))
-                c_lo, c_hi = strip.get('col_range', (0, 0))
-                asym = strip.get('asymmetry', 0)
-                parts.append(
-                    f"  Strip {strip.get('strip_idx', 0):2d} | "
-                    f"t={t_lo:5.1f}-{t_hi:5.1f} | "
-                    f"cols {c_lo:4d}-{c_hi:4d} | "
-                    f"bias={bias:+5.1f}px | "
-                    f"asym={asym:.2f} | {verdict}"
-                )
+            # Show only the worst 4 strips (by absolute bias), not all 20
+            strips = arm_diag.get('strips', [])
+            if strips:
+                ranked = sorted(strips, key=lambda s: abs(s.get('bias_px') or 0), reverse=True)
+                worst = ranked[:4]
+                parts.append(f"\nWorst {len(worst)} strips (of {len(strips)} total):")
+                for strip in worst:
+                    bias = strip.get('bias_px') or 0.0
+                    asym = strip.get('asymmetry') or 0.0
+                    verdict = "OK" if abs(bias) < 1.5 else ("WARN" if abs(bias) < 3 else "ERROR")
+                    t_range = strip.get('t_range') or [0, 0]
+                    c_range = strip.get('col_range') or [0, 0]
+                    t_lo, t_hi = t_range[0], t_range[-1]
+                    c_lo, c_hi = c_range[0], c_range[-1]
+                    parts.append(
+                        f"  Strip {strip.get('strip', strip.get('strip_idx', 0)):2d} | "
+                        f"t={t_lo:5.1f}-{t_hi:5.1f} | "
+                        f"cols {c_lo:4d}-{c_hi:4d} | "
+                        f"bias={bias:+5.1f}px | "
+                        f"asym={asym:.2f} | {verdict}"
+                    )
 
-    # Include the extraction config (no ground truth!)
+    # ── Extraction config (no ground truth!) ──
     arm_colors = [a.get('color', 'unknown') for a in extraction.get('arms', [])]
     parts.append(f"""
-Extraction config:
+=== EXTRACTION CONFIG ===
   bbox: {extraction.get('bbox', [])}
   axis: {json.dumps(extraction.get('axis', {}))}
   arms: {len(extraction.get('arms', []))} arms
   arm colors: {arm_colors}
 """)
 
-    # Arm-level coordinate summary (so the subagent knows the current state)
+    # ── Attempt 1 coordinates (sampled to keep prompt size reasonable) ──
+    parts.append("=== ATTEMPT 1 COORDINATES (adjust these, do not rewrite from scratch) ===")
     for i, arm in enumerate(extraction.get('arms', [])):
         coords = arm.get('coordinates', [])
         n = len(coords)
-        if n > 0:
-            t_vals = [c['t'] for c in coords]
-            s_vals = [c['s'] for c in coords]
-            parts.append(
-                f"  Arm {i} ({arm.get('label', '?')}): "
-                f"{n} points, t=[{min(t_vals):.2f}, {max(t_vals):.2f}], "
-                f"s=[{min(s_vals):.3f}, {max(s_vals):.3f}]"
-            )
+        sampled = _sample_coords(coords)
+        parts.append(
+            f"\n  Arm {i} ({arm.get('label', '?')}): "
+            f"{n} total points (showing {len(sampled)})"
+        )
+        for c in sampled:
+            parts.append(f"    t={c['t']:.4f}, s={c['s']:.4f}")
 
     return "\n".join(parts)
 
@@ -168,18 +291,49 @@ def prepare_correction_input(plot_name):
     annotation_img = bench_dir / 'annotation.png'
     dashboard_img = bench_dir / 'diagnostic' / 'dashboard.png'
 
+    # Build attempt1 coordinates (sampled for prompt size)
+    attempt1_coords = []
+    for arm in extraction.get('arms', []):
+        attempt1_coords.append({
+            'label': arm.get('label', 'unknown'),
+            'coordinates': _sample_coords(arm.get('coordinates', [])),
+        })
+
+    # Build diagnostic image list
+    diag_dir = bench_dir / 'diagnostic'
+    num_arms = len(extraction.get('arms', []))
+    diagnostic_images = {
+        'original': str(original_img),
+        'annotation': str(annotation_img),
+        'full_annotated': str(diag_dir / 'full_annotated.png'),
+    }
+    for i in range(num_arms):
+        diagnostic_images[f'arm{i}_mask'] = str(diag_dir / f'arm{i}_mask.png')
+        diagnostic_images[f'arm{i}_profiles'] = str(diag_dir / f'arm{i}_profiles.png')
+        diagnostic_images[f'arm{i}_strategies'] = str(diag_dir / f'arm{i}_strategies.png')
+        diagnostic_images[f'arm{i}_coverage'] = str(diag_dir / f'arm{i}_coverage.png')
+
     # Assemble correction input — NO ground truth references
     correction_input = {
         'plot_name': plot_name,
         'prompt': prompt,
+        'prompt_version': 'v3',
+        'prompt_sections': [
+            'SECTION 1 — IMAGE ANALYSIS',
+            'SECTION 2 — TECHNIQUE SELECTION',
+            'SECTION 3 — DIAGNOSTIC INTERPRETATION',
+            'SECTION 4 — CORRECTIONS AND REASONING',
+        ],
         'original_image': str(original_img),
         'annotation_image': str(annotation_img),
         'dashboard_image': str(dashboard_img) if dashboard_img.exists() else None,
-        'diagnostic_dir': str(bench_dir / 'diagnostic'),
+        'diagnostic_dir': str(diag_dir),
+        'diagnostic_images': diagnostic_images,
         'bbox': extraction.get('bbox', []),
         'axis': extraction.get('axis', {}),
         'arm_colors': [a.get('color', 'unknown') for a in extraction.get('arms', [])],
         'arm_labels': [a.get('label', f'Arm {i}') for i, a in enumerate(extraction.get('arms', []))],
+        'attempt1_coords': attempt1_coords,
         'timestamp': datetime.now().isoformat(),
     }
 
@@ -204,11 +358,19 @@ def execute_correction(code_str, plot_name, original_extraction):
     the new extraction dict.
 
     The code_str must define:
-      def corrected_extract(image_path, bbox, axis) -> dict
+      def corrected_extract(image_path, bbox, axis, attempt1_coords) -> dict
     """
     img_path = str(SYNTH_DIR / f'{plot_name}.png')
     bbox = original_extraction.get('bbox', [])
     axis = original_extraction.get('axis', {})
+
+    # Build attempt1_coords from the original extraction
+    attempt1_coords = []
+    for arm in original_extraction.get('arms', []):
+        attempt1_coords.append({
+            'label': arm.get('label', 'unknown'),
+            'coordinates': arm.get('coordinates', []),
+        })
 
     # Write code to temp file and run isolated
     with tempfile.NamedTemporaryFile(
@@ -223,7 +385,9 @@ from pathlib import Path
 
 {code_str}
 
-result = corrected_extract('{img_path}', {bbox}, {json.dumps(axis)})
+attempt1_coords = json.loads('''{json.dumps(attempt1_coords)}''')
+
+result = corrected_extract('{img_path}', {bbox}, {json.dumps(axis)}, attempt1_coords)
 
 # Handle numpy types for JSON serialization
 import json as _json
