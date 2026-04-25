@@ -6,6 +6,7 @@ Usage:
     python cdg.py --config data_pipeline/cities.yaml --output data/ [--city arlington_tx]
 """
 import argparse
+import glob
 import json
 import math
 import os
@@ -61,38 +62,55 @@ def main():
         )
 
         tile_size_m = tile_size * pixel_size
-        centers = generate_tile_centers(bbox_m, tile_size_m, n_tiles, jitter)
 
-        existing = {f for f in os.listdir(out_dir) if f.startswith("cond_")}
-        start_idx = len(existing)
+        # Loop until we reach n_tiles — each pass uses fresh random centers (augmentation
+        # via different jitter+rotation), so small cities can exceed their grid-cell cap.
+        while True:
+            existing = glob.glob(os.path.join(out_dir, "cond_*.npy"))
+            n_existing = len(existing)
+            if n_existing >= n_tiles:
+                print(f"  {city['name']}: {n_existing} tiles — target reached.")
+                break
 
-        for i, (cx_m, cy_m, rot) in enumerate(tqdm(centers, desc=city["name"])):
-            tile_idx = start_idx + i
-            cond_path = os.path.join(out_dir, f"cond_{tile_idx:04d}.npy")
-            road_path = os.path.join(out_dir, f"road_{tile_idx:04d}.npy")
-            meta_path = os.path.join(out_dir, f"meta_{tile_idx:04d}.json")
-            if os.path.exists(cond_path):
-                continue
+            # Start writing after the highest existing index to avoid overwriting or infinite
+            # loops caused by gaps (failed tiles leave holes in the sequence).
+            if existing:
+                max_idx = max(int(os.path.basename(f)[5:9]) for f in existing)
+                start_idx = max_idx + 1
+            else:
+                start_idx = 0
 
-            # Convert local meters back to lat/lon
-            lon = center_lon + cx_m / lon_to_m
-            lat = center_lat + cy_m / lat_to_m
+            need = n_tiles - n_existing
+            centers = generate_tile_centers(bbox_m, tile_size_m, need, jitter)
+            print(f"  {city['name']}: {start_idx}/{n_tiles} — generating {len(centers)} more")
 
-            try:
-                cond, road = assemble_tile(
-                    lon, lat, rot, tile_size, pixel_size,
-                    args.osm_cache, args.srtm_cache,
-                )
-                np.save(cond_path, cond)
-                np.save(road_path, road)
-                with open(meta_path, "w") as f:
-                    json.dump(
-                        {"lat": lat, "lon": lon, "rotation_deg": rot,
-                         "city": city["name"], "split": city["split"]},
-                        f,
+            for i, (cx_m, cy_m, rot) in enumerate(tqdm(centers, desc=city["name"])):
+                tile_idx = start_idx + i
+                cond_path = os.path.join(out_dir, f"cond_{tile_idx:04d}.npy")
+                road_path = os.path.join(out_dir, f"road_{tile_idx:04d}.npy")
+                meta_path = os.path.join(out_dir, f"meta_{tile_idx:04d}.json")
+                if os.path.exists(cond_path):
+                    continue
+
+                # Convert local meters back to lat/lon
+                lon = center_lon + cx_m / lon_to_m
+                lat = center_lat + cy_m / lat_to_m
+
+                try:
+                    cond, road = assemble_tile(
+                        lon, lat, rot, tile_size, pixel_size,
+                        args.osm_cache, args.srtm_cache,
                     )
-            except Exception as e:
-                print(f"  Skipping tile {tile_idx}: {e}")
+                    np.save(cond_path, cond)
+                    np.save(road_path, road)
+                    with open(meta_path, "w") as f:
+                        json.dump(
+                            {"lat": lat, "lon": lon, "rotation_deg": rot,
+                             "city": city["name"], "split": city["split"]},
+                            f,
+                        )
+                except Exception as e:
+                    print(f"  Skipping tile {tile_idx}: {e}")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ import argparse
 import glob
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -17,6 +19,45 @@ from model.unet import DiffusionUNet
 from model.vae import RoadVAE
 
 
+ROAD_COLORS = {
+    0: [0.15, 0.15, 0.15], 1: [0.9, 0.9, 0.9], 2: [0.6, 0.8, 0.4],
+    3: [0.9, 0.6, 0.2], 4: [0.9, 0.2, 0.2],
+}
+
+
+def onehot_to_rgb(idx):
+    rgb = np.zeros((*idx.shape, 3))
+    for c, col in ROAD_COLORS.items():
+        rgb[idx == c] = col
+    return rgb
+
+
+def save_progress_samples(vae, net, ddpm, val_ds, device, epoch, out_dir, n=4):
+    """Generate n samples from val set and save as a comparison PNG."""
+    net.eval()
+    fig, axes = plt.subplots(n, 3, figsize=(12, 4 * n))
+    if n == 1:
+        axes = [axes]
+
+    for i in range(min(n, len(val_ds))):
+        cond_t, road_t = val_ds[i]
+        cond = cond_t.unsqueeze(0).to(device)
+        with torch.no_grad():
+            z = ddpm.sample_ddim(net, cond, n_steps=50, guidance_scale=3.0)
+            road_pred = vae.decode(z)[0]
+        axes[i][0].imshow(cond_t[0].numpy(), cmap="terrain"); axes[i][0].set_title(f"Cond {i}"); axes[i][0].axis("off")
+        axes[i][1].imshow(onehot_to_rgb(road_t.argmax(0).numpy())); axes[i][1].set_title("GT"); axes[i][1].axis("off")
+        axes[i][2].imshow(onehot_to_rgb(road_pred.argmax(0).cpu().numpy())); axes[i][2].set_title("Pred"); axes[i][2].axis("off")
+
+    plt.suptitle(f"Epoch {epoch}")
+    plt.tight_layout()
+    path = os.path.join(out_dir, f"samples_epoch_{epoch:03d}.png")
+    plt.savefig(path, dpi=100, bbox_inches="tight")
+    plt.close()
+    net.train()
+    return path
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--vae", required=True)
@@ -24,12 +65,23 @@ def main():
     parser.add_argument("--output", default="checkpoints/diffusion/")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch", type=int, default=4)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=2e-5)
+    parser.add_argument("--cfg-prob", type=float, default=0.1, help="P of dropping conditioning during training (0.5 = CaRoLS spec)")
+    parser.add_argument("--val-every", type=int, default=5)
+    parser.add_argument("--sample-every", type=int, default=25)
     parser.add_argument("--resume", default=None)
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
+    samples_dir = os.path.join(args.output, "progress_samples")
+    os.makedirs(samples_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    print(f"=== Config ===")
+    print(f"  cfg_prob: {args.cfg_prob}")
+    print(f"  lr: {args.lr}, batch: {args.batch}, epochs: {args.epochs}")
+    print(f"  output: {args.output}")
+    print(f"==============")
 
     # Load frozen VAE encoder
     vae = RoadVAE().to(device)
@@ -41,16 +93,15 @@ def main():
     all_dirs = sorted(glob.glob(os.path.join(args.data, "*")))
     train_dirs = [d for d in all_dirs if "irving_tx" not in d]
     val_dirs = [d for d in all_dirs if "irving_tx" in d]
-    train_dl = DataLoader(
-        RoadLayoutDataset(train_dirs, augment=True),
-        batch_size=args.batch, shuffle=True, num_workers=2,
-    )
-    val_dl = DataLoader(
-        RoadLayoutDataset(val_dirs, augment=False),
-        batch_size=args.batch, shuffle=False, num_workers=2,
-    )
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=4).to(device)
+    train_ds = RoadLayoutDataset(train_dirs, augment=True)
+    val_ds = RoadLayoutDataset(val_dirs, augment=False)
+    print(f"Train: {len(train_ds)} tiles, Val: {len(val_ds)} tiles")
+
+    train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
+    val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
+
+    net = DiffusionUNet(latent_channels=4, cond_channels=3).to(device)
     ddpm = DDPM(T=1000)
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
@@ -60,22 +111,52 @@ def main():
         net.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         start_epoch = ckpt["epoch"] + 1
+        print(f"Resumed from epoch {start_epoch}")
 
+    print(f"=== Training start ===")
     for epoch in range(start_epoch, args.epochs):
         net.train()
         train_loss = 0.0
+        grad_norm_sum = 0.0
+        n_batches = 0
         for cond, road in tqdm(train_dl, desc=f"Epoch {epoch + 1}"):
             cond, road = cond.to(device), road.to(device)
             with torch.no_grad():
                 mu, logvar = vae.encode(road)
                 x0 = vae.reparameterize(mu, logvar)
-            loss = ddpm.training_loss(net, x0, cond, cfg_prob=0.1)
+            loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob)
             optimizer.zero_grad()
             loss.backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
             optimizer.step()
             train_loss += loss.item()
+            grad_norm_sum += grad_norm.item()
+            n_batches += 1
 
-        print(f"Epoch {epoch + 1}: train_loss={train_loss / len(train_dl):.6f}")
+        avg_train = train_loss / n_batches
+        avg_grad = grad_norm_sum / n_batches
+        print(f"Epoch {epoch + 1}: train_loss={avg_train:.6f}, grad_norm={avg_grad:.4f}")
+
+        # Validation loss
+        if (epoch + 1) % args.val_every == 0:
+            net.eval()
+            val_loss = 0.0
+            n_val = 0
+            with torch.no_grad():
+                for cond, road in val_dl:
+                    cond, road = cond.to(device), road.to(device)
+                    mu, logvar = vae.encode(road)
+                    x0 = vae.reparameterize(mu, logvar)
+                    loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob)
+                    val_loss += loss.item()
+                    n_val += 1
+            print(f"  val_loss={val_loss / n_val:.6f}")
+            net.train()
+
+        # Sample image generation
+        if (epoch + 1) % args.sample_every == 0:
+            path = save_progress_samples(vae, net, ddpm, val_ds, device, epoch + 1, samples_dir)
+            print(f"  Saved sample → {path}")
 
         if (epoch + 1) % 10 == 0:
             path = os.path.join(args.output, f"diffusion_epoch_{epoch + 1:03d}.pth")
