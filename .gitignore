@@ -22,3 +22,10 @@ osm_cache/
 *.cpg
 .DS_Store
 Thumbs.db
+
+# local output dirs (not committed; samples/ root tracks committed PNGs only)
+cluster_results/
+cache/
+viz/
+samples/*/
+logs/
