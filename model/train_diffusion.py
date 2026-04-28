@@ -32,10 +32,22 @@ def onehot_to_rgb(idx):
     return rgb
 
 
+COND_LAYOUT = [
+    ("Elev", "terrain", 0),
+    ("Water", "Blues", 1),
+    ("Residential", "Oranges", 2),
+    ("Commercial", "Purples", 3),
+    ("Industrial", "Greys", 4),
+    ("Parkland", "Greens", 5),
+    ("Agricultural", "YlOrBr", 6),
+]
+
+
 def save_progress_samples(vae, net, ddpm, val_ds, device, epoch, out_dir, n=4):
-    """Generate n samples from val set and save as a comparison PNG."""
+    """Generate n samples from val set; include each cond channel + GT + Pred."""
     net.eval()
-    fig, axes = plt.subplots(n, 3, figsize=(12, 4 * n))
+    n_cols = len(COND_LAYOUT) + 2  # cond channels + GT + Pred
+    fig, axes = plt.subplots(n, n_cols, figsize=(2.2 * n_cols, 2.4 * n))
     if n == 1:
         axes = [axes]
 
@@ -45,11 +57,26 @@ def save_progress_samples(vae, net, ddpm, val_ds, device, epoch, out_dir, n=4):
         with torch.no_grad():
             z = ddpm.sample_ddim(net, cond, n_steps=50, guidance_scale=3.0)
             road_pred = vae.decode(z)[0]
-        axes[i][0].imshow(cond_t[0].numpy(), cmap="terrain"); axes[i][0].set_title(f"Cond {i}"); axes[i][0].axis("off")
-        axes[i][1].imshow(onehot_to_rgb(road_t.argmax(0).numpy())); axes[i][1].set_title("GT"); axes[i][1].axis("off")
-        axes[i][2].imshow(onehot_to_rgb(road_pred.argmax(0).cpu().numpy())); axes[i][2].set_title("Pred"); axes[i][2].axis("off")
 
-    plt.suptitle(f"Epoch {epoch}")
+        # Cond channels
+        for col, (title, cmap, ch) in enumerate(COND_LAYOUT):
+            arr = cond_t[ch].numpy() if ch < cond_t.shape[0] else np.zeros_like(cond_t[0].numpy())
+            axes[i][col].imshow(arr, cmap=cmap, vmin=0, vmax=1 if ch > 0 else None)
+            if i == 0:
+                axes[i][col].set_title(title, fontsize=9)
+            axes[i][col].axis("off")
+        # GT
+        axes[i][n_cols - 2].imshow(onehot_to_rgb(road_t.argmax(0).numpy()))
+        if i == 0:
+            axes[i][n_cols - 2].set_title("GT", fontsize=9)
+        axes[i][n_cols - 2].axis("off")
+        # Pred
+        axes[i][n_cols - 1].imshow(onehot_to_rgb(road_pred.argmax(0).cpu().numpy()))
+        if i == 0:
+            axes[i][n_cols - 1].set_title("Pred", fontsize=9)
+        axes[i][n_cols - 1].axis("off")
+
+    plt.suptitle(f"Epoch {epoch}", fontsize=11)
     plt.tight_layout()
     path = os.path.join(out_dir, f"samples_epoch_{epoch:03d}.png")
     plt.savefig(path, dpi=100, bbox_inches="tight")
