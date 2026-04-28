@@ -23,11 +23,13 @@ def kl_loss(mu, logvar):
     return -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
 
+_PAPER_ALPHA = torch.tensor([0.1, 0.3, 0.6, 1.0, 2.0])
+
+
 def vae_loss(recon_logits, targets, mu, logvar, gamma=2.0, kl_weight=1e-4):
-    """Combined focal + KL loss for VAE training."""
-    freq = targets.mean(dim=(0, 2, 3)) + 1e-6  # (C,)
-    alpha = 1.0 / freq
-    alpha = alpha / alpha.sum()
+    """Combined focal + KL loss for VAE training. Alpha per CaRoLS paper:
+    [bg, residential, tertiary, primary, motorway] = [0.1, 0.3, 0.6, 1.0, 2.0]."""
+    alpha = _PAPER_ALPHA.to(recon_logits.device)
     l_focal = focal_loss(recon_logits, targets, gamma=gamma, alpha=alpha)
     l_kl = kl_loss(mu, logvar)
     return l_focal + kl_weight * l_kl

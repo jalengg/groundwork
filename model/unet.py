@@ -76,7 +76,7 @@ class ConditionEncoder(nn.Module):
 
 
 class DiffusionUNet(nn.Module):
-    def __init__(self, latent_channels=4, cond_channels=4, base_ch=64, t_dim=256):
+    def __init__(self, latent_channels=4, cond_channels=7, base_ch=64, t_dim=256):
         super().__init__()
         self.t_dim = t_dim
         self.t_mlp = TimestepMLP(t_dim)

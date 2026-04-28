@@ -76,16 +76,21 @@ def rasterize_roads_binary(G, center_lon, center_lat, grid_size_px, pixel_size_m
 
 
 def rasterize_road_output(G, center_lon, center_lat, grid_size_px, pixel_size_m,
-                           line_width_px=5):
+                           class_widths=None):
+    """Per-class line widths in pixels. Default: residential thinner than arterials
+    (residential ~10m, motorway ~25m at 5m/pixel)."""
+    if class_widths is None:
+        class_widths = {1: 2, 2: 3, 3: 4, 4: 5}  # residential, tertiary, primary, motorway
     west, south, east, north = _bbox_latlon(center_lon, center_lat, grid_size_px, pixel_size_m)
     transform = from_bounds(west, south, east, north, grid_size_px, grid_size_px)
     by_level = _get_edge_geometries_by_level(G, west, south, east, north)
 
     priority = np.zeros((grid_size_px, grid_size_px), dtype=np.int32)
-    struct = np.ones((line_width_px, line_width_px), dtype=bool)
     for ch in [1, 2, 3, 4]:
         if not by_level[ch]:
             continue
+        w = class_widths[ch]
+        struct = np.ones((w, w), dtype=bool)
         shapes = [(g.__geo_interface__, 1) for g in by_level[ch]]
         layer = rasterize(shapes, out_shape=(grid_size_px, grid_size_px),
                           transform=transform, fill=0, dtype=np.int32)

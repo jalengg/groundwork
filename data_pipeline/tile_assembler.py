@@ -4,11 +4,14 @@ import numpy as np
 from scipy.ndimage import rotate as scipy_rotate
 
 from data_pipeline.elevation_layer import fetch_elevation_grid
-from data_pipeline.osm_layers import fetch_landuse_grid, fetch_water_grid
+from data_pipeline.osm_layers import (
+    LANDUSE_CATEGORIES,
+    fetch_landuse_grid_categorical,
+    fetch_water_grid,
+)
 from data_pipeline.road_layers import (
     fetch_road_graph,
     rasterize_road_output,
-    rasterize_roads_binary,
 )
 
 
@@ -43,8 +46,9 @@ def assemble_tile(
 
     Returns
     -------
-    cond : float32 ndarray, shape (4, tile_size_px, tile_size_px)
-        Conditioning channels: [elevation, landuse, water, existing_roads]
+    cond : float32 ndarray, shape (2 + len(LANDUSE_CATEGORIES), tile_size_px, tile_size_px)
+        Conditioning channels: [elevation, water, landuse_one_hot...]
+        Landuse channel order is determined by LANDUSE_CATEGORIES.
     road : float32 ndarray, shape (5, tile_size_px, tile_size_px)
         One-hot road output: [background, residential, tertiary,
                                primary/secondary, motorway/trunk]
@@ -53,13 +57,14 @@ def assemble_tile(
 
     elev = fetch_elevation_grid(center_lon, center_lat, oversized, pixel_size_m, srtm_cache_dir)
     water = fetch_water_grid(center_lon, center_lat, oversized, pixel_size_m, osm_cache_dir)
-    landuse = fetch_landuse_grid(center_lon, center_lat, oversized, pixel_size_m, osm_cache_dir)
+    landuse_oh = fetch_landuse_grid_categorical(center_lon, center_lat, oversized, pixel_size_m, osm_cache_dir)
     G = fetch_road_graph(center_lon, center_lat, oversized, pixel_size_m, osm_cache_dir)
-    roads_binary = rasterize_roads_binary(G, center_lon, center_lat, oversized, pixel_size_m)
     roads_output = rasterize_road_output(G, center_lon, center_lat, oversized, pixel_size_m)
 
-    # Stack conditioning channels: (4, oversized, oversized)
-    cond_oversized = np.stack([elev, landuse, water, roads_binary], axis=0)
+    # Conditioning: [elev, water, landuse_one_hot...] = 2 + len(LANDUSE_CATEGORIES) channels
+    cond_oversized = np.concatenate(
+        [elev[None], water[None], landuse_oh], axis=0
+    )
 
     # Rotate and crop all channels together
     cond = _rotate_and_crop(cond_oversized, rotation_deg, tile_size_px)

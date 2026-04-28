@@ -26,20 +26,14 @@ class RoadLayoutDataset(Dataset):
 
     def __getitem__(self, idx):
         cond_path, road_path = self.samples[idx]
-        cond = np.load(cond_path)[:3]  # Drop channel 3 (existing roads) — force terrain-only generation
+        cond = np.load(cond_path)  # (7, H, W): elev, water, residential, commercial, industrial, parkland, agricultural
         road = np.load(road_path)  # (5, H, W)
 
         if self.augment:
-            # Random 90°/180°/270° rotation (k=0 = no-op)
-            k = np.random.randint(0, 4)
-            if k:
-                cond = np.rot90(cond, k, axes=(1, 2)).copy()
-                road = np.rot90(road, k, axes=(1, 2)).copy()
-            # Random horizontal flip
+            # Flips only — rot90 destroys absolute orientation prior we want the model to learn
             if np.random.random() > 0.5:
                 cond = np.flip(cond, axis=2).copy()
                 road = np.flip(road, axis=2).copy()
-            # Random vertical flip
             if np.random.random() > 0.5:
                 cond = np.flip(cond, axis=1).copy()
                 road = np.flip(road, axis=1).copy()

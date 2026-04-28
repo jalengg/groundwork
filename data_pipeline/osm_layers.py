@@ -14,6 +14,15 @@ LANDUSE_VALUES = {
     "grass": 0.7, "meadow": 0.7,
     "farmland": 0.5, "farmyard": 0.5,
 }
+
+# Categorical landuse one-hot (CaRoLS-style). Channel index → OSM tag values.
+LANDUSE_CATEGORIES = [
+    ("residential",  ["residential", "apartments"]),
+    ("commercial",   ["commercial", "retail"]),
+    ("industrial",   ["industrial", "warehouse"]),
+    ("parkland",     ["park", "recreation_ground", "nature_reserve", "forest", "grass", "meadow"]),
+    ("agricultural", ["farmland", "farmyard"]),
+]
 WATER_TAGS = {"natural": ["water", "wetland"], "waterway": True, "landuse": ["reservoir", "basin"]}
 LANDUSE_TAGS = {"landuse": True, "leisure": ["park", "recreation_ground", "golf_course"]}
 
@@ -92,3 +101,46 @@ def fetch_landuse_grid(center_lon, center_lat, grid_size_px, pixel_size_m, cache
                           transform=transform, fill=0.0, dtype=np.float32)
         arr = np.where(patch > 0, patch, arr)
     return arr
+
+
+def fetch_landuse_grid_categorical(center_lon, center_lat, grid_size_px, pixel_size_m, cache_dir="osm_cache"):
+    """Returns (C, H, W) one-hot landuse map with C = len(LANDUSE_CATEGORIES).
+    Uses the same OSM cache as fetch_landuse_grid. Pixels not covered by any
+    polygon are all-zero across channels (treated as 'unknown' by the model)."""
+    west, south, east, north = _bbox_latlon(center_lon, center_lat, grid_size_px, pixel_size_m)
+    cache = _cache_path(cache_dir, "landuse", center_lon, center_lat, grid_size_px)
+
+    if os.path.exists(cache):
+        with open(cache, "rb") as f:
+            gdf = pickle.load(f)
+    else:
+        try:
+            gdf = ox.features_from_bbox((west, south, east, north), tags=LANDUSE_TAGS)
+            gdf = gdf[gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
+        except Exception:
+            gdf = gpd.GeoDataFrame(geometry=[])
+        with open(cache, "wb") as f:
+            pickle.dump(gdf, f)
+
+    C = len(LANDUSE_CATEGORIES)
+    transform = from_bounds(west, south, east, north, grid_size_px, grid_size_px)
+    out = np.zeros((C, grid_size_px, grid_size_px), dtype=np.float32)
+    if len(gdf) == 0:
+        return out
+
+    # Reverse lookup: tag -> channel index
+    tag_to_ch = {t: ch for ch, (_, tags) in enumerate(LANDUSE_CATEGORIES) for t in tags}
+
+    for _, row in gdf.iterrows():
+        geom = row.geometry
+        if geom is None:
+            continue
+        tag_val = str(row.get("landuse", row.get("leisure", "other")))
+        ch = tag_to_ch.get(tag_val)
+        if ch is None:
+            continue
+        patch = rasterize([(geom.__geo_interface__, 1.0)],
+                          out_shape=(grid_size_px, grid_size_px),
+                          transform=transform, fill=0.0, dtype=np.float32)
+        out[ch] = np.maximum(out[ch], patch)
+    return out

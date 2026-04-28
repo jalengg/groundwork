@@ -1,6 +1,6 @@
 # Groundwork
 
-A research prototype for generating realistic US suburban road networks using a CaRoLS-style two-stage diffusion model. Conditioning on terrain (elevation, land use, water), the model generates road maps that can later be consumed by a Cities Skylines 1 mod.
+A research prototype for generating realistic US suburban road networks using a CaRoLS-style two-stage diffusion model. Conditioning on terrain (elevation, water) and **categorical land use** (residential, commercial, industrial, parkland, agricultural), the model generates road maps that can later be consumed by a Cities Skylines 1 mod.
 
 > **Status: research prototype.** The ML pipeline trains and produces road-shaped outputs. Known limitations: residential street channel is noisy/scattered, and the in-game mod integration is not yet built. See [`docs/findings.md`](docs/findings.md) for what we tried and what didn't work.
 
@@ -10,11 +10,11 @@ Reproduces (loosely) [CaRoLS: Condition-adaptive multi-level road layout synthes
 
 Two stages:
 
-1. **VAE** (frozen after training) — compresses a `(5, 512, 512)` road map into a `(4, 64, 64)` latent and decodes it back. 5 channels = one-hot road class (background, residential, tertiary, primary/secondary, motorway/trunk).
-2. **Conditional diffusion U-Net** — generates latent codes from Gaussian noise, optionally conditioned on a `(3, 512, 512)` terrain image (elevation, land use, water). DDIM sampling with classifier-free guidance.
+1. **VAE** (frozen after training) — compresses a `(5, 512, 512)` road map into a `(4, 64, 64)` latent and decodes it back. 5 channels = one-hot road class (background, residential, tertiary, primary/secondary, motorway/trunk). Per-class line widths during rasterization (residential `2px` to motorway `5px`) match real-world relative road widths. Trained with focal loss + KL using paper-specified per-class alphas `[0.1, 0.3, 0.6, 1.0, 2.0]`.
+2. **Conditional diffusion U-Net** — generates latent codes from Gaussian noise, optionally conditioned on a `(7, 512, 512)` image with **categorical landuse one-hot**: `[elevation, water, residential, commercial, industrial, parkland, agricultural]`. DDIM sampling with classifier-free guidance. Optionally trained with class-weighted denoising loss (DRoLaS Eq. 9).
 
 ```
-terrain (3×512×512)
+conditioning (7×512×512)   [elev, water, 5 landuse classes]
     ↓
 DDIM 50-step denoising (CFG, w=3)
     ↓
@@ -75,6 +75,18 @@ python model/train_diffusion.py \
 
 `--cfg-prob` is the probability of dropping the conditioning during a training step (CaRoLS spec is `0.5`). Diagnostics are saved every 5 epochs (val loss) and every 25 epochs (sample images).
 
+Optional: enable DRoLaS-style **class-weighted denoising loss** with `--class-weights "1.0,1.2,1.4,1.4,1.4"` (background → motorway).
+
+### 3b. Re-encode existing tiles after a pipeline change
+
+If you change the conditioning encoding or road rasterization, regenerate `cond_*.npy` and `road_*.npy` for already-collected tiles without re-fetching OSM/SRTM (uses cache):
+
+```bash
+python -m data_pipeline.regen_cond --data data/ --workers 4
+# or per-city
+python -m data_pipeline.regen_cond --data data/ --city arlington_tx
+```
+
 ### 4. Inference
 
 ```bash
@@ -94,8 +106,21 @@ Applies dilation → skeletonization → small-component pruning per CaRoLS Sect
 ## Cluster (UIUC Campus Cluster)
 
 ```bash
-sbatch slurm_datagen.sh                                       # CPU data generation
-CFG_PROB=0.5 EPOCHS=200 sbatch slurm_diffusion.sh             # GPU training
+# CPU data generation
+sbatch slurm_datagen.sh
+# Bulk re-encode existing tiles (parallel array job, one task per city)
+sbatch slurm_regen_array.sh
+
+# GPU training — full A100 (3-day partition)
+CFG_PROB=0.5 EPOCHS=200 sbatch slurm_diffusion.sh
+# GPU training — H100 MIG slice (8h partition, faster turnaround)
+CFG_PROB=0.5 EPOCHS=150 \
+  VAE_CKPT=checkpoints/vae/vae_epoch_050.pth \
+  OUT_DIR=checkpoints/diffusion \
+  EXTRA_ARGS='--class-weights 1.0,1.2,1.4,1.4,1.4' \
+  sbatch slurm_diffusion_express.sh
+# VAE retrain on the MIG slice
+OUT_DIR=checkpoints/vae EPOCHS=50 sbatch slurm_vae_express.sh
 ```
 
 ## Sample outputs

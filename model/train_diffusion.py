@@ -70,7 +70,19 @@ def main():
     parser.add_argument("--val-every", type=int, default=5)
     parser.add_argument("--sample-every", type=int, default=25)
     parser.add_argument("--resume", default=None)
+    parser.add_argument(
+        "--class-weights",
+        type=str,
+        default=None,
+        help="Comma-separated 5 floats e.g. '1.0,1.2,1.4,1.4,1.4' (DRoLaS Eq. 9). "
+        "If set, applies class-weighted denoising loss in latent space.",
+    )
     args = parser.parse_args()
+    class_weights = None
+    if args.class_weights:
+        class_weights = torch.tensor([float(x) for x in args.class_weights.split(",")])
+        assert class_weights.numel() == 5, "expected 5 weights for 5 road classes"
+        print(f"  class_weights: {class_weights.tolist()}")
 
     os.makedirs(args.output, exist_ok=True)
     samples_dir = os.path.join(args.output, "progress_samples")
@@ -101,7 +113,7 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
     val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=3).to(device)
+    net = DiffusionUNet(latent_channels=4, cond_channels=7).to(device)
     ddpm = DDPM(T=1000)
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
@@ -124,7 +136,9 @@ def main():
             with torch.no_grad():
                 mu, logvar = vae.encode(road)
                 x0 = vae.reparameterize(mu, logvar)
-            loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob)
+            loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
+                                      road=road if class_weights is not None else None,
+                                      class_weights=class_weights)
             optimizer.zero_grad()
             loss.backward()
             grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -147,7 +161,9 @@ def main():
                     cond, road = cond.to(device), road.to(device)
                     mu, logvar = vae.encode(road)
                     x0 = vae.reparameterize(mu, logvar)
-                    loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob)
+                    loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
+                                      road=road if class_weights is not None else None,
+                                      class_weights=class_weights)
                     val_loss += loss.item()
                     n_val += 1
             print(f"  val_loss={val_loss / n_val:.6f}")

@@ -60,7 +60,7 @@ def main():
     vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     vae.eval()
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=3).to(device)
+    net = DiffusionUNet(latent_channels=4, cond_channels=7).to(device)
     ckpt = torch.load(args.diffusion, map_location=device)
     net.load_state_dict(ckpt["model"])
     net.eval()
@@ -78,7 +78,7 @@ def main():
     for i, cf in enumerate(cond_files):
         idx = cf.replace("cond_", "").replace(".npy", "")
         cond_full = np.load(os.path.join(args.data, cf)).astype(np.float32)
-        cond_np = cond_full[:3]  # Drop existing-roads channel
+        cond_np = cond_full  # New format: (7, H, W) — elev, water, landuse one-hot
         road_np = np.load(os.path.join(args.data, f"road_{idx}.npy")).astype(np.float32)
 
         cond = torch.from_numpy(cond_np).unsqueeze(0).to(device)

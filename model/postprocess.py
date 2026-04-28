@@ -88,7 +88,7 @@ def main():
     vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     vae.eval()
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=3).to(device)
+    net = DiffusionUNet(latent_channels=4, cond_channels=7).to(device)
     net.load_state_dict(torch.load(args.diffusion, map_location=device)["model"])
     net.eval()
 
@@ -104,7 +104,7 @@ def main():
         cond_full = np.load(os.path.join(args.data, cf)).astype(np.float32)
         road_np = np.load(os.path.join(args.data, f"road_{idx}.npy")).astype(np.float32)
 
-        cond = torch.from_numpy(cond_full[:3]).unsqueeze(0).to(device)
+        cond = torch.from_numpy(cond_full).unsqueeze(0).to(device)
 
         with torch.no_grad():
             z = ddpm.sample_ddim(net, cond, n_steps=args.steps, guidance_scale=args.guidance)
