@@ -104,6 +104,13 @@ def main():
         help="Comma-separated 5 floats e.g. '1.0,1.2,1.4,1.4,1.4' (DRoLaS Eq. 9). "
         "If set, applies class-weighted denoising loss in latent space.",
     )
+    parser.add_argument(
+        "--local-module",
+        choices=["lde", "load"],
+        default="lde",
+        help="CDB local-cond integration: 'lde' (CaRoLS concat-fusion, default) or "
+        "'load' (DRoLaS SFT/FiLM affine modulation, +9 FID per DRoLaS Table 2).",
+    )
     args = parser.parse_args()
     class_weights = None
     if args.class_weights:
@@ -118,6 +125,7 @@ def main():
 
     print(f"=== Config ===")
     print(f"  cfg_prob: {args.cfg_prob}")
+    print(f"  local_module: {args.local_module}")
     print(f"  lr: {args.lr}, batch: {args.batch}, epochs: {args.epochs}")
     print(f"  output: {args.output}")
     print(f"==============")
@@ -140,7 +148,7 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
     val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=7).to(device)
+    net = DiffusionUNet(latent_channels=4, cond_channels=7, local_module=args.local_module).to(device)
     ddpm = DDPM(T=1000)
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
