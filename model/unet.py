@@ -148,17 +148,24 @@ class DiffusionUNet(nn.Module):
         e4 = self.noise_enc4(e3, t_emb)
         b = self.bottleneck(e4, t_emb)
 
-        # cdb1 deepest: R_up=None (paper i=3 special case).
-        # Each level: d_i = dec_i(cat[R_g, e_i], t) + up_proj_i(R_l)  — paper §3.2 R^i = R_up + R_l.
+        # Paper §3.2: R_up^(i+1) fed to next CDB's LDE is the bare std-dec output;
+        # R^i = R_up^i + R_l^i is the CDB output. Earlier impl propagated
+        # (dec_i + up_proj_i(R_l_i)) forward as R_up, which double-injected R_l
+        # into every level beyond the deepest. Fix: keep up_i bare for the next
+        # CDB; only add up_proj at the shallowest level (the only R^i consumed
+        # by self.out). up_proj_1..3 retained for state_dict back-compat with
+        # diff_planA / diff_load checkpoints; they are unused at runtime.
         R_l1, R_g1 = self.cdb1(e4, None, R_c[3])
-        d1 = self.dec1(torch.cat([R_g1, e4], 1), t_emb) + self.up_proj1(R_l1)
+        up1 = self.dec1(torch.cat([R_g1, e4], 1), t_emb)
 
-        R_l2, R_g2 = self.cdb2(e3, F.interpolate(d1, size=e3.shape[-2:]), R_c[2])
-        d2 = self.dec2(torch.cat([R_g2, e3], 1), t_emb) + self.up_proj2(R_l2)
+        R_l2, R_g2 = self.cdb2(e3, F.interpolate(up1, size=e3.shape[-2:]), R_c[2])
+        up2 = self.dec2(torch.cat([R_g2, e3], 1), t_emb)
 
-        R_l3, R_g3 = self.cdb3(e2, F.interpolate(d2, size=e2.shape[-2:]), R_c[1])
-        d3 = self.dec3(torch.cat([R_g3, e2], 1), t_emb) + self.up_proj3(R_l3)
+        R_l3, R_g3 = self.cdb3(e2, F.interpolate(up2, size=e2.shape[-2:]), R_c[1])
+        up3 = self.dec3(torch.cat([R_g3, e2], 1), t_emb)
 
-        R_l4, R_g4 = self.cdb4(e1, F.interpolate(d3, size=e1.shape[-2:]), R_c[0])
-        d4 = self.dec4(torch.cat([R_g4, e1], 1), t_emb) + self.up_proj4(R_l4)
+        R_l4, R_g4 = self.cdb4(e1, F.interpolate(up3, size=e1.shape[-2:]), R_c[0])
+        up4 = self.dec4(torch.cat([R_g4, e1], 1), t_emb)
+
+        d4 = up4 + self.up_proj4(R_l4)
         return self.out(d4)
