@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data_pipeline.dataset import RoadLayoutDataset
-from model.diffusion import DDPM
+from model.diffusion import DDPM, compute_class_weight_latent
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
 
@@ -171,9 +171,13 @@ def main():
             with torch.no_grad():
                 mu, logvar = vae.encode(road)
                 x0 = vae.reparameterize(mu, logvar)
+                weight_latent = (
+                    compute_class_weight_latent(vae, road, class_weights)
+                    if class_weights is not None
+                    else None
+                )
             loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
-                                      road=road if class_weights is not None else None,
-                                      class_weights=class_weights)
+                                      weight_latent=weight_latent)
             optimizer.zero_grad()
             loss.backward()
             grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -196,9 +200,13 @@ def main():
                     cond, road = cond.to(device), road.to(device)
                     mu, logvar = vae.encode(road)
                     x0 = vae.reparameterize(mu, logvar)
+                    weight_latent = (
+                        compute_class_weight_latent(vae, road, class_weights)
+                        if class_weights is not None
+                        else None
+                    )
                     loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
-                                      road=road if class_weights is not None else None,
-                                      class_weights=class_weights)
+                                      weight_latent=weight_latent)
                     val_loss += loss.item()
                     n_val += 1
             print(f"  val_loss={val_loss / n_val:.6f}")
