@@ -4,23 +4,29 @@ import torch.nn.functional as F
 
 @torch.no_grad()
 def compute_class_weight_latent(vae, road, class_weights):
-    """DRoLaS Eq. 9: W = Σ_i w_i · E(m_i).
+    """DRoLaS Eq. 9: W = Σ_i w_i · E(m_i), per-sample RMS-normalized.
 
     For each road class i, build a 5-channel input where only channel i is
     populated (a one-hot 'as if only class i existed'), encode through the
-    frozen VAE encoder, weighted-sum across classes. Returns a per-sample
-    latent-space weight tensor matching x0's shape.
+    frozen VAE encoder, weighted-sum across classes, then normalize each
+    sample so mean(W²) = 1.
 
-    Earlier impl approximated E(m_i) with adaptive_avg_pool2d, which
-    collapses to a 1-channel scalar mass map and discards the encoder's
-    learned spatial structure. This is paper-literal.
+    Per-class single-channel inputs are out-of-distribution for a VAE
+    trained on full one-hot road maps, so raw E(m_i) magnitudes can be
+    50-100× the in-distribution scale. Without normalization the resulting
+    loss `||W ⊙ (ε − ε_θ)||²` was ~45× our uniform-MSE baseline — gradients
+    pegged the `clip_grad_norm_(..., 1.0)` ceiling every step, erasing
+    Adam's per-parameter scaling. Per-sample RMS normalization preserves
+    the *relative* spatial weighting (which is the load-bearing part of
+    Eq. 9) while restoring loss scale to ~1× uniform-MSE.
 
     Args:
         vae: frozen RoadVAE (eval mode).
         road: (B, C_cls, H, W) one-hot road raster.
         class_weights: (C_cls,) tensor of per-class weights.
     Returns:
-        (B, latent_channels, latent_H, latent_W) weight tensor.
+        (B, latent_channels, latent_H, latent_W) weight tensor with
+        per-sample mean(W²) = 1.
     """
     B, C_cls, H, W = road.shape
     weights = class_weights.to(road.device)
@@ -31,7 +37,8 @@ def compute_class_weight_latent(vae, road, class_weights):
         mu, _ = vae.encode(m_i_5ch)
         contrib = weights[i] * mu
         weight_latent = contrib if weight_latent is None else weight_latent + contrib
-    return weight_latent
+    rms = weight_latent.pow(2).mean(dim=(1, 2, 3), keepdim=True).sqrt().clamp(min=1e-6)
+    return weight_latent / rms
 
 
 class DDPM:
