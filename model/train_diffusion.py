@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data_pipeline.dataset import RoadLayoutDataset
-from model.diffusion import DDPM
+from model.diffusion import DDPM, compute_class_weight_latent
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
 
@@ -104,6 +104,13 @@ def main():
         help="Comma-separated 5 floats e.g. '1.0,1.2,1.4,1.4,1.4' (DRoLaS Eq. 9). "
         "If set, applies class-weighted denoising loss in latent space.",
     )
+    parser.add_argument(
+        "--local-module",
+        choices=["lde", "load"],
+        default="lde",
+        help="CDB local-cond integration: 'lde' (CaRoLS concat-fusion, default) or "
+        "'load' (DRoLaS SFT/FiLM affine modulation, +9 FID per DRoLaS Table 2).",
+    )
     args = parser.parse_args()
     class_weights = None
     if args.class_weights:
@@ -118,6 +125,7 @@ def main():
 
     print(f"=== Config ===")
     print(f"  cfg_prob: {args.cfg_prob}")
+    print(f"  local_module: {args.local_module}")
     print(f"  lr: {args.lr}, batch: {args.batch}, epochs: {args.epochs}")
     print(f"  output: {args.output}")
     print(f"==============")
@@ -140,7 +148,7 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
     val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=7).to(device)
+    net = DiffusionUNet(latent_channels=4, cond_channels=7, local_module=args.local_module).to(device)
     ddpm = DDPM(T=1000)
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
@@ -163,9 +171,13 @@ def main():
             with torch.no_grad():
                 mu, logvar = vae.encode(road)
                 x0 = vae.reparameterize(mu, logvar)
+                weight_latent = (
+                    compute_class_weight_latent(vae, road, class_weights)
+                    if class_weights is not None
+                    else None
+                )
             loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
-                                      road=road if class_weights is not None else None,
-                                      class_weights=class_weights)
+                                      weight_latent=weight_latent)
             optimizer.zero_grad()
             loss.backward()
             grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
@@ -188,9 +200,13 @@ def main():
                     cond, road = cond.to(device), road.to(device)
                     mu, logvar = vae.encode(road)
                     x0 = vae.reparameterize(mu, logvar)
+                    weight_latent = (
+                        compute_class_weight_latent(vae, road, class_weights)
+                        if class_weights is not None
+                        else None
+                    )
                     loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
-                                      road=road if class_weights is not None else None,
-                                      class_weights=class_weights)
+                                      weight_latent=weight_latent)
                     val_loss += loss.item()
                     n_val += 1
             print(f"  val_loss={val_loss / n_val:.6f}")
