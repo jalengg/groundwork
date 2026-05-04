@@ -31,6 +31,7 @@ import torch
 
 from data_pipeline.dataset import RoadLayoutDataset
 from model.diffusion import DDPM
+from model.postprocess import vectorize_layout
 from model.train_diffusion import onehot_to_rgb
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
@@ -51,14 +52,25 @@ def make_synthetic_cond(real_cond, only_class):
     return cond
 
 
-def run_inference(net, vae, ddpm, cond, device, seed=42, w=3.0):
-    """Sample with a fixed noise seed for fair comparison."""
+def run_inference(net, vae, ddpm, cond, device, seed=42, w=3.0, postprocess=False):
+    """Sample with a fixed noise seed for fair comparison.
+
+    If postprocess=True, run the full CaRoLS Sec 3.3 vectorization pipeline
+    (skeleton -> graph -> bridge disjoint CCs -> DP-simplify -> re-render)
+    before returning the class-index map. Paper computes CI/TC only on this
+    representation; res-vs-com pixel-disagreement at the raw-raster level
+    over-states class similarity because both classes have the same noise
+    statistics before topology is recovered.
+    """
     torch.manual_seed(seed)
     cond_b = cond.unsqueeze(0).to(device)
     with torch.no_grad():
         z = ddpm.sample_ddim(net, cond_b, n_steps=50, guidance_scale=w)
         road = vae.decode(z)[0]
-    return road.argmax(0).cpu().numpy()
+    if not postprocess:
+        return road.argmax(0).cpu().numpy()
+    vec_idx, _ = vectorize_layout(road)
+    return vec_idx
 
 
 def main():
@@ -72,6 +84,8 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--local-module", choices=["lde", "load"], default="lde",
                         help="Must match the trained checkpoint's CDB local-module variant.")
+    parser.add_argument("--postprocess", action="store_true",
+                        help="Apply CaRoLS Sec 3.3 vectorization before computing the diag matrix.")
     args = parser.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -126,16 +140,18 @@ def main():
 
     # Bottom row: predictions
     for col, (name, cond) in enumerate(setups):
-        pred = run_inference(net, vae, ddpm, cond, device, seed=args.seed, w=args.guidance)
+        pred = run_inference(net, vae, ddpm, cond, device, seed=args.seed, w=args.guidance, postprocess=args.postprocess)
         axes[1][col].imshow(onehot_to_rgb(pred))
         axes[1][col].set_title(f"Pred (seed={args.seed})", fontsize=9)
         axes[1][col].axis("off")
         print(f"  {name}: pred class shares = "
               f"{np.bincount(pred.flatten(), minlength=5) / pred.size}")
 
-    plt.suptitle(f"Conditioning diagnostic — tile {args.tile_idx}, w={args.guidance}", fontsize=11)
+    title_extra = " [POSTPROCESSED]" if args.postprocess else ""
+    plt.suptitle(f"Conditioning diagnostic — tile {args.tile_idx}, w={args.guidance}{title_extra}", fontsize=11)
     plt.tight_layout()
-    out_path = os.path.join(args.out_dir, f"diag_tile{args.tile_idx}.png")
+    suffix = "_postproc" if args.postprocess else ""
+    out_path = os.path.join(args.out_dir, f"diag_tile{args.tile_idx}{suffix}.png")
     plt.savefig(out_path, dpi=100, bbox_inches="tight")
     plt.close()
     print(f"Saved: {out_path}")
@@ -144,7 +160,7 @@ def main():
     print("\n=== Pairwise pixel disagreement (% pixels differing) ===")
     preds = []
     for name, cond in setups:
-        preds.append((name, run_inference(net, vae, ddpm, cond, device, seed=args.seed, w=args.guidance)))
+        preds.append((name, run_inference(net, vae, ddpm, cond, device, seed=args.seed, w=args.guidance, postprocess=args.postprocess)))
     print(f"{'':<35}" + "".join(f"{n[:14]:>16}" for n, _ in preds))
     for i, (ni, pi) in enumerate(preds):
         row = f"{ni[:35]:<35}"
