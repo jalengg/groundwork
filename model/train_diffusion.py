@@ -17,6 +17,7 @@ from data_pipeline.dataset import RoadLayoutDataset
 from model.diffusion import DDPM, compute_class_weight_latent
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
+from model.vae_sdxl import RoadVAESDXL
 
 
 ROAD_COLORS = {
@@ -87,7 +88,8 @@ def save_progress_samples(vae, net, ddpm, val_ds, device, epoch, out_dir, n=4):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vae", required=True)
+    parser.add_argument("--vae", default=None,
+                        help="Path to custom VAE checkpoint (required when --vae-type=custom).")
     parser.add_argument("--data", default="data/")
     parser.add_argument("--output", default="checkpoints/diffusion/")
     parser.add_argument("--epochs", type=int, default=200)
@@ -111,7 +113,16 @@ def main():
         help="CDB local-cond integration: 'lde' (CaRoLS concat-fusion, default) or "
         "'load' (DRoLaS SFT/FiLM affine modulation, +9 FID per DRoLaS Table 2).",
     )
+    parser.add_argument(
+        "--vae-type",
+        choices=["custom", "sdxl"],
+        default="custom",
+        help="VAE backend: 'custom' (our trained model.vae.RoadVAE, requires --vae) "
+        "or 'sdxl' (frozen pretrained madebyollin/sdxl-vae-fp16-fix; --vae ignored).",
+    )
     args = parser.parse_args()
+    if args.vae_type == "custom" and not args.vae:
+        parser.error("--vae is required when --vae-type=custom")
     class_weights = None
     if args.class_weights:
         class_weights = torch.tensor([float(x) for x in args.class_weights.split(",")])
@@ -130,9 +141,14 @@ def main():
     print(f"  output: {args.output}")
     print(f"==============")
 
-    # Load frozen VAE encoder
-    vae = RoadVAE().to(device)
-    vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
+    # Load frozen VAE encoder (custom or pretrained SDXL)
+    if args.vae_type == "sdxl":
+        print("Loading frozen SDXL pretrained VAE (madebyollin/sdxl-vae-fp16-fix)")
+        vae = RoadVAESDXL().to(device)
+    else:
+        print(f"Loading custom VAE checkpoint: {args.vae}")
+        vae = RoadVAE().to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     vae.eval()
     for p in vae.parameters():
         p.requires_grad_(False)
