@@ -71,15 +71,20 @@ class _CondEncBlock(nn.Module):
 
 
 class ConditionEncoder(nn.Module):
-    """Stem: 3×3 conv → BatchNorm → ReLU → R_c ∈ R^(H×W×base_ch).
-    Then 4 encoder blocks producing {R_c^0, R_c^1, R_c^2, R_c^3}."""
+    """Stem: 3×3 conv → GroupNorm → SiLU → R_c ∈ R^(H×W×base_ch).
+    Then 4 encoder blocks producing {R_c^0, R_c^1, R_c^2, R_c^3}.
+
+    Note: paper spec calls for BatchNorm, but BN misbehaves under CFG dropout
+    (entire cond tensor gets zeroed 10% of training steps; running_mean→0,
+    running_var→0; eval-time normalization divides by ~ε). GroupNorm is the
+    standard substitute used throughout the rest of the U-Net.
+    """
     def __init__(self, in_ch=7, base_ch=64):
         super().__init__()
-        # Paper spec: 3x3 conv + ReLU + BatchNorm. Order from paper: conv, ReLU, BN.
         self.stem = nn.Sequential(
             nn.Conv2d(in_ch, base_ch, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.BatchNorm2d(base_ch),
+            nn.GroupNorm(8, base_ch),
+            nn.SiLU(inplace=True),
         )
         self.enc1 = _CondEncBlock(base_ch, base_ch)              # 512→256
         self.enc2 = _CondEncBlock(base_ch, base_ch * 2)          # 256→128

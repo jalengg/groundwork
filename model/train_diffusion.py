@@ -120,6 +120,11 @@ def main():
         help="VAE backend: 'custom' (our trained model.vae.RoadVAE, requires --vae) "
         "or 'sdxl' (frozen pretrained madebyollin/sdxl-vae-fp16-fix; --vae ignored).",
     )
+    parser.add_argument("--ema-decay", type=float, default=0.9999,
+                        help="EMA decay for model weights. 0 disables EMA. "
+                        "0.9999 ≈ 10K-step horizon — standard for DDPM.")
+    parser.add_argument("--grad-clip", type=float, default=1.0,
+                        help="Max gradient norm. Set higher (e.g., 50) if loss-scale is intentionally bumped.")
     args = parser.parse_args()
     if args.vae_type == "custom" and not args.vae:
         parser.error("--vae is required when --vae-type=custom")
@@ -153,6 +158,19 @@ def main():
     for p in vae.parameters():
         p.requires_grad_(False)
 
+    # Calibrate SDXL VAE per-channel shift/scale on actual training distribution
+    # (default photographic 0.13025 is wrong for our palette inputs).
+    if args.vae_type == "sdxl":
+        print("Calibrating SDXL VAE per-channel scaling on training set...")
+        calib_loader = DataLoader(
+            RoadLayoutDataset(
+                [d for d in sorted(glob.glob(os.path.join(args.data, "*"))) if "irving_tx" not in d],
+                augment=False,
+            ),
+            batch_size=args.batch, shuffle=True, num_workers=2,
+        )
+        vae.calibrate(calib_loader, max_batches=64)
+
     all_dirs = sorted(glob.glob(os.path.join(args.data, "*")))
     train_dirs = [d for d in all_dirs if "irving_tx" not in d]
     val_dirs = [d for d in all_dirs if "irving_tx" in d]
@@ -169,10 +187,39 @@ def main():
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
 
+    # EMA tracker — Karras 2024 / Ho 2020 standard. Shadow weights updated
+    # per step; eval / sampling / saving uses EMA weights.
+    ema_state = None
+    if args.ema_decay > 0:
+        ema_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        print(f"  EMA enabled, decay={args.ema_decay}")
+
+    def ema_update():
+        if ema_state is None:
+            return
+        with torch.no_grad():
+            for k, v in net.state_dict().items():
+                if v.dtype.is_floating_point:
+                    ema_state[k].mul_(args.ema_decay).add_(v.detach(), alpha=1 - args.ema_decay)
+                else:
+                    ema_state[k].copy_(v)
+
+    def swap_in_ema():
+        """Returns a saved-state callable that restores live weights when called."""
+        if ema_state is None:
+            return lambda: None
+        live_copy = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        net.load_state_dict(ema_state, strict=True)
+        return lambda: net.load_state_dict(live_copy, strict=True)
+
     if args.resume:
         ckpt = torch.load(args.resume, map_location=device)
         net.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        if ema_state is not None and "ema" in ckpt:
+            for k in ema_state:
+                ema_state[k].copy_(ckpt["ema"][k].to(device))
+            print("  EMA state restored")
         start_epoch = ckpt["epoch"] + 1
         print(f"Resumed from epoch {start_epoch}")
 
@@ -196,8 +243,9 @@ def main():
                                       weight_latent=weight_latent)
             optimizer.zero_grad()
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), args.grad_clip)
             optimizer.step()
+            ema_update()
             train_loss += loss.item()
             grad_norm_sum += grad_norm.item()
             n_batches += 1
@@ -206,8 +254,9 @@ def main():
         avg_grad = grad_norm_sum / n_batches
         print(f"Epoch {epoch + 1}: train_loss={avg_train:.6f}, grad_norm={avg_grad:.4f}")
 
-        # Validation loss
+        # Validation loss — run on EMA weights (the ones we'll actually deploy)
         if (epoch + 1) % args.val_every == 0:
+            restore_live = swap_in_ema()
             net.eval()
             val_loss = 0.0
             n_val = 0
@@ -225,20 +274,28 @@ def main():
                                       weight_latent=weight_latent)
                     val_loss += loss.item()
                     n_val += 1
-            print(f"  val_loss={val_loss / n_val:.6f}")
+            print(f"  val_loss={val_loss / n_val:.6f}  (EMA weights)")
+            restore_live()
             net.train()
 
-        # Sample image generation
+        # Sample image generation — also EMA
         if (epoch + 1) % args.sample_every == 0:
+            restore_live = swap_in_ema()
             path = save_progress_samples(vae, net, ddpm, val_ds, device, epoch + 1, samples_dir)
             print(f"  Saved sample → {path}")
+            restore_live()
 
+        # Checkpoint — save both live and EMA weights
         if (epoch + 1) % 10 == 0:
             path = os.path.join(args.output, f"diffusion_epoch_{epoch + 1:03d}.pth")
-            torch.save(
-                {"epoch": epoch, "model": net.state_dict(), "optimizer": optimizer.state_dict()},
-                path,
-            )
+            ckpt = {
+                "epoch": epoch,
+                "model": net.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            }
+            if ema_state is not None:
+                ckpt["ema"] = ema_state
+            torch.save(ckpt, path)
             print(f"  Saved {path}")
 
 

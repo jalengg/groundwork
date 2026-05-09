@@ -25,7 +25,7 @@ class LocalDetailsEnhancement(nn.Module):
         if not is_unconditional:
             cond_feat = self.cond_proj(R_c)
             if cond_feat.shape[-2:] != R_down.shape[-2:]:
-                cond_feat = F.interpolate(cond_feat, size=R_down.shape[-2:], mode="bilinear", align_corners=False)
+                cond_feat = F.interpolate(cond_feat, size=R_down.shape[-2:], mode="nearest")
             skip_feat = self.skip_proj(R_down)
             fused = self.fuse(torch.cat([cond_feat, skip_feat], dim=1))
             R_down = R_down + fused
@@ -66,7 +66,7 @@ class GlobalContextIntegration(nn.Module):
             fused = self.local_proj(R_l)
         else:
             if R_c.shape[-2:] != R_l.shape[-2:]:
-                R_c = F.interpolate(R_c, size=R_l.shape[-2:], mode="bilinear", align_corners=False)
+                R_c = F.interpolate(R_c, size=R_l.shape[-2:], mode="nearest")
             A = self.cond_proj(R_c)
             B_feat = self.local_proj(R_l)
             fused = self.fuse(torch.cat([A, B_feat], dim=1))
@@ -116,7 +116,7 @@ class LocalAdaptation(nn.Module):
             modulated = R_down
         else:
             if R_c.shape[-2:] != R_down.shape[-2:]:
-                R_c = F.interpolate(R_c, size=R_down.shape[-2:], mode="bilinear", align_corners=False)
+                R_c = F.interpolate(R_c, size=R_down.shape[-2:], mode="nearest")
             gamma = self.gamma_conv(R_c)
             delta = self.delta_conv(R_c)
             modulated = gamma * R_down + delta + R_down

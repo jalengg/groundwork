@@ -60,10 +60,18 @@ class RoadVAESDXL(nn.Module):
     VAE under the hood.
 
     Same latent shape (4×64×64), same encode/decode/reparameterize API.
-    The wrapping palette transformations preserve the (B, 5, H, W) one-hot
-    interface the diffusion U-Net's conditioning was trained against."""
 
-    SDXL_SCALING = 0.13025  # SDXL VAE scaling factor (built-in attribute too)
+    Per-channel scale calibration: SDXL's `scaling_factor=0.13025` was
+    calibrated on photographic LAION inputs. On our palette-encoded
+    inputs (5-color cube corners), the per-channel `mu` distribution is
+    different. Calling `calibrate(loader)` once over the training set
+    computes empirical per-channel mean+std and stores them as
+    `self.shift, self.scale` so the latent fed to the diffusion model
+    has near-zero mean and unit std per-channel — required for the
+    standard DDPM `α_t` schedule to be correctly calibrated.
+    """
+
+    SDXL_SCALING = 0.13025  # legacy default; overridden by .calibrate()
 
     def __init__(self, model_id="madebyollin/sdxl-vae-fp16-fix", dtype=torch.float32):
         super().__init__()
@@ -71,29 +79,65 @@ class RoadVAESDXL(nn.Module):
         for p in self.vae.parameters():
             p.requires_grad_(False)
         self.vae.eval()
-        self.scaling = self.vae.config.scaling_factor                   # 0.13025 for SDXL
+        # Latent normalization. Default to SDXL's photographic calibration;
+        # call .calibrate() to override with our actual training distribution.
+        self.register_buffer("shift", torch.zeros(1, 4, 1, 1))
+        self.register_buffer("scale", torch.full((1, 4, 1, 1), 1.0 / self.SDXL_SCALING))
+
+    @torch.no_grad()
+    def calibrate(self, road_loader, max_batches=None, verbose=True):
+        """Estimate per-channel shift/scale from the training distribution.
+        Pass a DataLoader yielding (cond, road) tuples (we ignore cond here)."""
+        self.eval()
+        means, sq_means, n = None, None, 0
+        for i, batch in enumerate(road_loader):
+            if max_batches is not None and i >= max_batches:
+                break
+            road = batch[1] if isinstance(batch, (tuple, list)) else batch
+            road = road.to(next(self.vae.parameters()).device)
+            rgb = onehot_to_rgb_palette(road) * 2 - 1
+            mu = self.vae.encode(rgb).latent_dist.mean                  # (B, 4, h, w) raw
+            B = mu.shape[0]
+            n += B
+            cur_mean = mu.mean(dim=(0, 2, 3))                            # (4,)
+            cur_sq = mu.pow(2).mean(dim=(0, 2, 3))                       # (4,)
+            if means is None:
+                means, sq_means = cur_mean * B, cur_sq * B
+            else:
+                means += cur_mean * B
+                sq_means += cur_sq * B
+        means /= n
+        sq_means /= n
+        stds = (sq_means - means.pow(2)).clamp(min=1e-8).sqrt()
+        self.shift.copy_(means.view(1, 4, 1, 1))
+        self.scale.copy_(stds.view(1, 4, 1, 1))
+        if verbose:
+            print(f"[VAE calibrate] over {n} samples:")
+            print(f"  per-channel mean: {means.tolist()}")
+            print(f"  per-channel std:  {stds.tolist()}")
+            print(f"  (vs SDXL default scaling 1/{self.SDXL_SCALING:.5f} = {1/self.SDXL_SCALING:.4f})")
 
     # ---------- API parity with RoadVAE ----------
     def encode(self, road_oh):
-        """5-ch one-hot road -> (mu, logvar) in latent space."""
-        rgb = onehot_to_rgb_palette(road_oh)                            # (B, 3, H, W) in [0,1]
-        rgb = rgb * 2 - 1                                               # SDXL expects [-1, 1]
+        """5-ch one-hot road -> (mu, logvar) in normalized latent space."""
+        rgb = onehot_to_rgb_palette(road_oh) * 2 - 1                    # SDXL expects [-1, 1]
         with torch.no_grad():
             posterior = self.vae.encode(rgb).latent_dist
-        # Apply SDXL scaling so the latent has unit-ish std (per SDXL convention).
-        return posterior.mean * self.scaling, torch.log(posterior.std.pow(2) * self.scaling ** 2 + 1e-12)
+        mu_raw, std_raw = posterior.mean, posterior.std
+        mu = (mu_raw - self.shift) / self.scale
+        logvar = torch.log((std_raw / self.scale).pow(2) + 1e-12)
+        return mu, logvar
 
     def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         return mu + std * torch.randn_like(std)
 
     def decode(self, z):
-        """latent -> 5-ch one-hot road (via nearest-color from RGB output)."""
+        """normalized latent -> 5-ch one-hot road logits."""
+        z_unscaled = z * self.scale + self.shift                        # invert encode normalization
         with torch.no_grad():
-            rgb_out = self.vae.decode(z / self.scaling).sample          # (B, 3, H, W) in [-1, 1]
-        rgb_out = (rgb_out + 1) / 2                                      # back to [0, 1]
-        rgb_out = rgb_out.clamp(0, 1)
-        # Return as logits-like (5-ch) so downstream `.argmax(1)` works without changes.
+            rgb_out = self.vae.decode(z_unscaled).sample                # (B, 3, H, W) in [-1, 1]
+        rgb_out = ((rgb_out + 1) / 2).clamp(0, 1)
         return rgb_to_onehot_palette(rgb_out, return_logits=True)
 
     def forward(self, road_oh):
