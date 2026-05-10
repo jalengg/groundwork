@@ -13,7 +13,8 @@ from tqdm import tqdm
 
 from data_pipeline.dataset import RoadLayoutDataset
 from model.vae import RoadVAE
-from model.vae_loss import vae_loss
+from model.vae_v2 import RoadVAEv2
+from model.vae_loss import vae_loss, vae_loss_v2
 
 
 def main():
@@ -24,6 +25,12 @@ def main():
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--resume", default=None)
+    parser.add_argument("--version", choices=["v1", "v2"], default="v1",
+                        help="v1: original 5M-param focal+KL. v2: 14M-param CE+Dice+KL.")
+    parser.add_argument("--base-ch", type=int, default=96,
+                        help="v2 only: base channel count.")
+    parser.add_argument("--kl-weight", type=float, default=None,
+                        help="Override default KL weight (v1 default 1e-4, v2 default 1e-3).")
     args = parser.parse_args()
 
     os.makedirs(args.output, exist_ok=True)
@@ -38,7 +45,14 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
     val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
 
-    model = RoadVAE().to(device)
+    if args.version == "v1":
+        model = RoadVAE().to(device)
+        kl_w = args.kl_weight if args.kl_weight is not None else 1e-4
+    else:
+        model = RoadVAEv2(base_ch=args.base_ch).to(device)
+        kl_w = args.kl_weight if args.kl_weight is not None else 1e-3
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"VAE {args.version}: {n_params:,} params, KL weight {kl_w:.0e}")
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
 
@@ -52,10 +66,16 @@ def main():
     for epoch in range(start_epoch, args.epochs):
         model.train()
         train_loss = 0.0
+        comp_sum = {"ce": 0.0, "dice": 0.0, "kl": 0.0}
         for cond, road in tqdm(train_dl, desc=f"Epoch {epoch + 1} train"):
             road = road.to(device)
             recon, mu, logvar = model(road)
-            loss = vae_loss(recon, road, mu, logvar)
+            if args.version == "v1":
+                loss = vae_loss(recon, road, mu, logvar, kl_weight=kl_w)
+            else:
+                loss, comps = vae_loss_v2(recon, road, mu, logvar, kl_weight=kl_w)
+                for k in comp_sum:
+                    comp_sum[k] += comps[k]
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -67,12 +87,19 @@ def main():
             for cond, road in val_dl:
                 road = road.to(device)
                 recon, mu, logvar = model(road)
-                val_loss += vae_loss(recon, road, mu, logvar).item()
+                if args.version == "v1":
+                    vl = vae_loss(recon, road, mu, logvar, kl_weight=kl_w)
+                else:
+                    vl, _ = vae_loss_v2(recon, road, mu, logvar, kl_weight=kl_w)
+                val_loss += vl.item()
 
-        print(
-            f"Epoch {epoch + 1}: train={train_loss / len(train_dl):.4f}"
-            f"  val={val_loss / max(len(val_dl), 1):.4f}"
-        )
+        avg_train = train_loss / len(train_dl)
+        avg_val = val_loss / max(len(val_dl), 1)
+        msg = f"Epoch {epoch + 1}: train={avg_train:.4f}  val={avg_val:.4f}"
+        if args.version == "v2":
+            n = len(train_dl)
+            msg += f"  ce={comp_sum['ce']/n:.4f} dice={comp_sum['dice']/n:.4f} kl={comp_sum['kl']/n:.4f}"
+        print(msg)
 
         if (epoch + 1) % 5 == 0:
             path = os.path.join(args.output, f"vae_epoch_{epoch + 1:03d}.pth")

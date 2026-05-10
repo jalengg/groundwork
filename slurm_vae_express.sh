@@ -11,10 +11,13 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jalen.jiang2+slurm@gmail.com
 
-# Override via env: OUT_DIR=checkpoints/vae_paperalpha EPOCHS=50 sbatch slurm_vae_express.sh
+# Override via env, e.g.:
+#   VERSION=v2 EXTRA_ARGS='--base-ch 96' OUT_DIR=checkpoints/vae_v2 EPOCHS=50 sbatch slurm_vae_express.sh
 OUT_DIR="${OUT_DIR:-checkpoints/vae}"
 EPOCHS="${EPOCHS:-50}"
 BATCH="${BATCH:-2}"
+VERSION="${VERSION:-v1}"
+EXTRA_ARGS="${EXTRA_ARGS:-}"
 
 cd "$SLURM_SUBMIT_DIR"
 
@@ -35,7 +38,9 @@ python model/train_vae.py \
     --output "$OUT_DIR" \
     --epochs "$EPOCHS" \
     --batch "$BATCH" \
-    --lr 2e-5
+    --lr 2e-5 \
+    --version "$VERSION" \
+    $EXTRA_ARGS
 
 EXIT_CODE=$?
 echo "End Time: $(date)  Exit Code: $EXIT_CODE"
