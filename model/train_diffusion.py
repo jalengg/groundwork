@@ -18,6 +18,7 @@ from model.diffusion import DDPM, compute_class_weight_latent
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
 from model.vae_sdxl import RoadVAESDXL
+from model.vae_v2 import RoadVAEv2
 
 
 ROAD_COLORS = {
@@ -115,11 +116,15 @@ def main():
     )
     parser.add_argument(
         "--vae-type",
-        choices=["custom", "sdxl"],
+        choices=["custom", "custom-v2", "sdxl"],
         default="custom",
-        help="VAE backend: 'custom' (our trained model.vae.RoadVAE, requires --vae) "
-        "or 'sdxl' (frozen pretrained madebyollin/sdxl-vae-fp16-fix; --vae ignored).",
+        help="VAE backend: 'custom' (v1 5M RoadVAE), 'custom-v2' (12.4M RoadVAEv2), "
+        "or 'sdxl' (frozen pretrained madebyollin/sdxl-vae-fp16-fix).",
     )
+    parser.add_argument("--vae-base-ch", type=int, default=96,
+                        help="custom-v2 only: base channel count to match VAE training.")
+    parser.add_argument("--vae-latent-channels", type=int, default=4,
+                        help="custom-v2 only: latent channel count to match VAE training.")
     parser.add_argument("--ema-decay", type=float, default=0.9999,
                         help="EMA decay for model weights. 0 disables EMA. "
                         "0.9999 ≈ 10K-step horizon — standard for DDPM.")
@@ -146,10 +151,15 @@ def main():
     print(f"  output: {args.output}")
     print(f"==============")
 
-    # Load frozen VAE encoder (custom or pretrained SDXL)
+    # Load frozen VAE encoder
     if args.vae_type == "sdxl":
         print("Loading frozen SDXL pretrained VAE (madebyollin/sdxl-vae-fp16-fix)")
         vae = RoadVAESDXL().to(device)
+    elif args.vae_type == "custom-v2":
+        print(f"Loading RoadVAEv2 checkpoint: {args.vae} "
+              f"(base_ch={args.vae_base_ch}, latent_channels={args.vae_latent_channels})")
+        vae = RoadVAEv2(base_ch=args.vae_base_ch, latent_channels=args.vae_latent_channels).to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     else:
         print(f"Loading custom VAE checkpoint: {args.vae}")
         vae = RoadVAE().to(device)
@@ -182,7 +192,7 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
     val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=7, local_module=args.local_module).to(device)
+    net = DiffusionUNet(latent_channels=args.vae_latent_channels, cond_channels=7, local_module=args.local_module).to(device)
     ddpm = DDPM(T=1000)
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0

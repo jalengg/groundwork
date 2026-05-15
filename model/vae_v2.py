@@ -125,13 +125,18 @@ class VAEDecoderV2(nn.Module):
 
 class RoadVAEv2(nn.Module):
     """API-compatible drop-in for `model.vae.RoadVAE` with ~3× the capacity
-    and bottleneck attention. Same `(B,5,512,512)` in / `(B,4,64,64)` latent
-    out, so the diffusion U-Net code path is unchanged."""
+    and bottleneck attention. (B,5,512,512) -> (B,latent_channels,64,64).
 
-    def __init__(self, base_ch=96):
+    latent_channels defaults to 4 (matches CaRoLS/SDXL convention). Bump to
+    8 or 16 (SD3/Flux convention) for ~2-4× latent capacity — necessary if
+    the 4×64×64 information bottleneck is what caps reconstruction IoU.
+    """
+
+    def __init__(self, base_ch=96, latent_channels=4):
         super().__init__()
-        self.encoder = VAEEncoderV2(base_ch=base_ch)
-        self.decoder = VAEDecoderV2(base_ch=base_ch)
+        self.latent_channels = latent_channels
+        self.encoder = VAEEncoderV2(base_ch=base_ch, latent_channels=latent_channels)
+        self.decoder = VAEDecoderV2(base_ch=base_ch, latent_channels=latent_channels)
 
     def encode(self, x):
         return self.encoder(x)

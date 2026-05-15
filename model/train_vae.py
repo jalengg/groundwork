@@ -29,6 +29,8 @@ def main():
                         help="v1: original 5M-param focal+KL. v2: 14M-param CE+Dice+KL.")
     parser.add_argument("--base-ch", type=int, default=96,
                         help="v2 only: base channel count.")
+    parser.add_argument("--latent-channels", type=int, default=4,
+                        help="v2 only: latent channel count (4=SDXL, 16=SD3/Flux).")
     parser.add_argument("--kl-weight", type=float, default=None,
                         help="Override default KL weight (v1 default 1e-4, v2 default 1e-3).")
     args = parser.parse_args()
@@ -49,10 +51,10 @@ def main():
         model = RoadVAE().to(device)
         kl_w = args.kl_weight if args.kl_weight is not None else 1e-4
     else:
-        model = RoadVAEv2(base_ch=args.base_ch).to(device)
+        model = RoadVAEv2(base_ch=args.base_ch, latent_channels=args.latent_channels).to(device)
         kl_w = args.kl_weight if args.kl_weight is not None else 1e-3
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"VAE {args.version}: {n_params:,} params, KL weight {kl_w:.0e}")
+    print(f"VAE {args.version}: {n_params:,} params, KL weight {kl_w:.0e}, latent_channels={args.latent_channels}")
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
 
