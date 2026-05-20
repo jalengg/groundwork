@@ -2,6 +2,45 @@ import torch
 import torch.nn.functional as F
 
 
+@torch.no_grad()
+def compute_class_weight_latent(vae, road, class_weights):
+    """DRoLaS Eq. 9: W = Σ_i w_i · E(m_i), per-sample RMS-normalized.
+
+    For each road class i, build a 5-channel input where only channel i is
+    populated (a one-hot 'as if only class i existed'), encode through the
+    frozen VAE encoder, weighted-sum across classes, then normalize each
+    sample so mean(W²) = 1.
+
+    Per-class single-channel inputs are out-of-distribution for a VAE
+    trained on full one-hot road maps, so raw E(m_i) magnitudes can be
+    50-100× the in-distribution scale. Without normalization the resulting
+    loss `||W ⊙ (ε − ε_θ)||²` was ~45× our uniform-MSE baseline — gradients
+    pegged the `clip_grad_norm_(..., 1.0)` ceiling every step, erasing
+    Adam's per-parameter scaling. Per-sample RMS normalization preserves
+    the *relative* spatial weighting (which is the load-bearing part of
+    Eq. 9) while restoring loss scale to ~1× uniform-MSE.
+
+    Args:
+        vae: frozen RoadVAE (eval mode).
+        road: (B, C_cls, H, W) one-hot road raster.
+        class_weights: (C_cls,) tensor of per-class weights.
+    Returns:
+        (B, latent_channels, latent_H, latent_W) weight tensor with
+        per-sample mean(W²) = 1.
+    """
+    B, C_cls, H, W = road.shape
+    weights = class_weights.to(road.device)
+    weight_latent = None
+    for i in range(C_cls):
+        m_i_5ch = torch.zeros_like(road)
+        m_i_5ch[:, i:i + 1] = road[:, i:i + 1]
+        mu, _ = vae.encode(m_i_5ch)
+        contrib = weights[i] * mu
+        weight_latent = contrib if weight_latent is None else weight_latent + contrib
+    rms = weight_latent.pow(2).mean(dim=(1, 2, 3), keepdim=True).sqrt().clamp(min=1e-6)
+    return weight_latent / rms
+
+
 class DDPM:
     def __init__(self, T=1000, beta_start=1e-4, beta_end=0.02):
         self.T = T
@@ -20,14 +59,14 @@ class DDPM:
         x_t = ab.sqrt() * x0 + (1 - ab).sqrt() * eps
         return x_t, eps
 
-    def training_loss(self, model, x0, cond, cfg_prob=0.5, road=None, class_weights=None):
+    def training_loss(self, model, x0, cond, cfg_prob=0.5, weight_latent=None):
         """DDPM epsilon-prediction loss with classifier-free guidance dropout.
 
-        If `road` (B, C_cls, H, W) one-hot target and `class_weights` (C_cls,) are
-        both provided, applies a per-spatial-location class-weighted MSE per
-        DRoLaS Eq. 9 — weights the loss by the road-class composition of each
-        latent location, downsampled from the road raster. Otherwise falls back
-        to uniform MSE.
+        If `weight_latent` is provided (shape matching x0), applies the DRoLaS
+        Eq. 8 class-weighted denoising loss `L_w = E[||W ⊙ (ε − ε_θ)||²]`.
+        Otherwise falls back to uniform MSE.
+
+        Build `weight_latent` via `compute_class_weight_latent(vae, road, w)`.
         """
         B = x0.shape[0]
         t = torch.randint(0, self.T, (B,), device=x0.device)
@@ -36,19 +75,9 @@ class DDPM:
         cond_masked = cond * mask[:, None, None, None]
         eps_pred = model(x_t, t, cond_masked)
 
-        if road is None or class_weights is None:
+        if weight_latent is None:
             return F.mse_loss(eps_pred, eps)
-
-        # Class-weighted version: downsample road one-hot to latent res,
-        # take weighted sum across classes → per-latent-pixel weight.
-        latent_H, latent_W = x0.shape[-2:]
-        road_down = F.adaptive_avg_pool2d(road, (latent_H, latent_W))   # (B, C_cls, 64, 64)
-        w = class_weights.to(x0.device).view(1, -1, 1, 1)
-        W = (w * road_down).sum(dim=1, keepdim=True)                    # (B, 1, 64, 64)
-        # Normalize per-sample so mean weight ≈ 1 — preserves overall loss scale
-        W = W / W.mean(dim=(1, 2, 3), keepdim=True).clamp(min=1e-6)
-        sq_err = (eps - eps_pred).pow(2)                                # (B, 4, 64, 64)
-        return (sq_err * W).mean()
+        return ((eps - eps_pred) * weight_latent).pow(2).mean()
 
     @torch.no_grad()
     def sample_ddim(self, model, cond, n_steps=50, guidance_scale=3.0,

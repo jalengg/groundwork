@@ -1,0 +1,23 @@
+[
+  {
+    "id": "groundwork_road_cnet",
+    "type": "local",
+    "dataset_type": "image",
+    "instance_data_dir": "/u/jalenj4/groundwork/data/flux_cnet/target",
+    "conditioning_data_dir": "/u/jalenj4/groundwork/data/flux_cnet/cond",
+    "caption_strategy": "textfile",
+    "captions_dir": "/u/jalenj4/groundwork/data/flux_cnet/meta",
+    "resolution": 1024,
+    "resolution_type": "pixel",
+    "minimum_image_size": 1024,
+    "maximum_image_size": 1024,
+    "target_downsample_size": 1024,
+    "crop": false,
+    "crop_aspect": "square",
+    "skip_file_discovery": "",
+    "preserve_data_backend_cache": false,
+    "metadata_backend": "json",
+    "cache_dir_vae": "/u/jalenj4/groundwork/data/flux_cnet/cache_vae",
+    "cache_dir_text": "/u/jalenj4/groundwork/data/flux_cnet/cache_text"
+  }
+]

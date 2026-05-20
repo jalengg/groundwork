@@ -5,7 +5,7 @@
 #SBATCH --output=logs/regen_arr_%A_%a.out
 #SBATCH --error=logs/regen_arr_%A_%a.err
 #SBATCH --time=03:30:00
-#SBATCH --mem=8G
+#SBATCH --mem=24G
 #SBATCH --cpus-per-task=4
 #SBATCH --array=0-16
 #SBATCH --mail-type=END,FAIL

@@ -186,9 +186,75 @@ If (1)+(2) only partially fix it, the structurally-correct move is **structure-f
 
 ---
 
+## DRoLaS architectural finding: LoAd ≠ LDE (2026-05-01)
+
+We obtained the DRoLaS paper PDF (`Dong et al. ICMR 2025`) and read it end-to-end. **The LoAd module in DRoLaS is structurally different from the LDE module in CaRoLS** — and the DRoLaS ablation directly identifies LoAd as the single highest-impact architectural lever. Our current `model/cdb.py:LocalDetailsEnhancement` follows CaRoLS's concat-fusion LDE, **not** DRoLaS's affine-modulation LoAd. This is a candidate root cause for the spatial-conditioning failure (`res-vs-com 21%` pixel disagreement).
+
+### LoAd (DRoLaS) — SFT/FiLM-style affine modulation
+
+Per DRoLaS Eq. 3-4:
+
+```
+γ_i = conv_γ(f_i),  δ_i = conv_δ(f_i)
+ĝ_i = γ_i ⊙ g_i + δ_i + g_i
+```
+
+`f_i` is the conditioning feature at level `i`. `g_i` is the noise-stream representation. Modulation is **per-pixel**: each spatial location gets its own scale and bias from the cond. **No spatial blending** in the modulation step — this preserves fine-grained spatial cond differences.
+
+### LDE (CaRoLS, our impl) — concat-fusion
+
+Per `model/cdb.py:30`:
+
+```
+fused = Conv3x3(cat([cond_proj, skip_proj]))
+R_l = R_down + fused
+```
+
+The 3×3 conv has a 3-pixel receptive field, so it **blends features across a 3-pixel neighborhood**. At deeper CDB levels (4×4 latent), each pixel covers ~640 m of real-world space — a 3-pixel blur smears across an entire neighborhood. Plausible mechanism for why our model can't distinguish residential from commercial spatially.
+
+### DRoLaS ablation table (Table 2)
+
+| Setting | Added | FID ↓ | Δ vs prior |
+|---|---|---|---|
+| 1 | Baseline (concat fusion + standard MSE loss, no refiner) | 33.93 | — |
+| 2 | + **LoAd** | 24.75 | **−9.18** ⭐ biggest single lever |
+| 3 | + GloP | 24.47 | −0.28 |
+| 4 | + class-weighted loss | 19.00 | −5.47 |
+| 5 | + connectivity refiner (no disc detector) | 18.42 | −0.58 |
+| DRoLaS | + connectivity refiner with disc detector | 17.50 | −0.92 |
+
+**LoAd alone contributes −9 FID. GloP contributes −0.3.** Cross-attention (which we have) is small change relative to affine modulation (which we don't).
+
+### GloP vs GCI — minor differences
+
+- DRoLaS GloP: `Q` from `ĝ_i` (LoAd output), `K, V` from `f_i` directly
+- CaRoLS GCI (ours): `Q` from `R_l`, `K, V` from `fuse(R_c, R_l)` (concat-and-fuse)
+
+Same cross-attention math; K/V source differs slightly. Per the ablation, this difference is worth ~0.3 FID — marginal.
+
+### Other DRoLaS findings worth noting
+
+- **Class-weighted denoising loss formula matches our impl exactly**: `L_w = E[||W·(ε-ε_θ)||²]` with `W = Σ w_i E(m_i)` and weights `[1.4, 1.4, 1.4, 1.2, 1.0]`. ✓ already implemented (`model/diffusion.py`).
+- **DRoLaS team explicitly states (page 6, line 482)**: *"Due to the unavailability of their source code, we re-implemented these methods to the best of our ability and retrained them on our dataset."* — confirms NO public code for `Birsak 2022`, `Yang 2023`, `Gu 2024`, or any baseline they compare to.
+- **ControlNet was tested as a baseline** by DRoLaS and performed terribly (`FID=119` vs DRoLaS's `17.5`, "scattered patches not coherent road segments"). The ControlNet-as-shortcut idea from earlier brainstorming is **ruled out** for this task.
+- **DRoLaS landuse channels**: 8 classes (commercial, parkland, educational, medical, residential, industrial, transportation, water) vs our 5 (residential, commercial, industrial, parkland, agricultural). They keep edu/medical/transport as separate channels; we collapsed.
+- **DRoLaS dataset spec matches**: 2581 pairs, Sydney/Melbourne/Brisbane, 5m/px, 512×512 patches, 70/30 split. Same as ours (2590, US Sun Belt, 5m/px, 512×512).
+
+### Implication for our work
+
+The field's empirical evidence (DRoLaS Table 2) ranks LoAd *much* higher than the connectivity refiner or even the class-weighted loss as a quality lever. Our architecture has the third-biggest lever (class-weighted) but **lacks the biggest lever (LoAd)**. This is the most well-motivated next change — directly targets the spatial-conditioning failure mechanism, validated by ablation, ~50 lines of code.
+
+### Next experiment
+
+**Replace LDE with LoAd-style affine modulation** in `model/cdb.py`. Plumbed as a flag (`--lde-type {lde,load}`) so the existing `diff_safe_fix` / `diff_planA` checkpoints remain reproducible. Train under the same recipe (`lr=2e-5`, `batch=4`, `ρ=0.1`, `--class-weights`, 200 epochs, `IllinoisComputes-GPU` A100). Evaluate via `model/diag_conditioning.py` against the `>40%` res-vs-com acceptance criterion.
+
+---
+
 ## References
 
 - Feng T, Li L, Li W, Li B, Shen J. **CaRoLS: Condition-adaptive multi-level road layout synthesis.** *Computers & Graphics* 133 (2025) 104451. https://doi.org/10.1016/j.cag.2025.104451
+- Dong S, Li W, Li B, Li L, Shen J, Feng T. **DRoLaS: Diffusion-Based Coarse-to-Fine Conditional Synthesis of Hierarchical Road Layouts.** ICMR 2025. https://doi.org/10.1145/3731715.3733316
+- Wang X, Yu K, Dong C, Loy CC. **Recovering Realistic Texture in Image Super-Resolution by Deep Spatial Feature Transform (SFT).** CVPR 2018. (LoAd inspiration.)
 - Chen G, Esch G, Wonka P, Müller P, Zhang E. **Interactive procedural street modeling.** SIGGRAPH 2008.
 - Jiang L, Dai B, Wu W, Loy CC. **Focal Frequency Loss for Image Reconstruction and Synthesis.** ICCV 2021.
 - Thamizharasan V, Liu Y, et al. **VecFusion: Vector Font Generation with Diffusion.** arXiv:2312.10540.

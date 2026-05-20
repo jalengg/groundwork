@@ -14,9 +14,11 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data_pipeline.dataset import RoadLayoutDataset
-from model.diffusion import DDPM
+from model.diffusion import DDPM, compute_class_weight_latent
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
+from model.vae_sdxl import RoadVAESDXL
+from model.vae_v2 import RoadVAEv2
 
 
 ROAD_COLORS = {
@@ -87,7 +89,8 @@ def save_progress_samples(vae, net, ddpm, val_ds, device, epoch, out_dir, n=4):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vae", required=True)
+    parser.add_argument("--vae", default=None,
+                        help="Path to custom VAE checkpoint (required when --vae-type=custom).")
     parser.add_argument("--data", default="data/")
     parser.add_argument("--output", default="checkpoints/diffusion/")
     parser.add_argument("--epochs", type=int, default=200)
@@ -104,7 +107,32 @@ def main():
         help="Comma-separated 5 floats e.g. '1.0,1.2,1.4,1.4,1.4' (DRoLaS Eq. 9). "
         "If set, applies class-weighted denoising loss in latent space.",
     )
+    parser.add_argument(
+        "--local-module",
+        choices=["lde", "load"],
+        default="lde",
+        help="CDB local-cond integration: 'lde' (CaRoLS concat-fusion, default) or "
+        "'load' (DRoLaS SFT/FiLM affine modulation, +9 FID per DRoLaS Table 2).",
+    )
+    parser.add_argument(
+        "--vae-type",
+        choices=["custom", "custom-v2", "sdxl"],
+        default="custom",
+        help="VAE backend: 'custom' (v1 5M RoadVAE), 'custom-v2' (12.4M RoadVAEv2), "
+        "or 'sdxl' (frozen pretrained madebyollin/sdxl-vae-fp16-fix).",
+    )
+    parser.add_argument("--vae-base-ch", type=int, default=96,
+                        help="custom-v2 only: base channel count to match VAE training.")
+    parser.add_argument("--vae-latent-channels", type=int, default=4,
+                        help="custom-v2 only: latent channel count to match VAE training.")
+    parser.add_argument("--ema-decay", type=float, default=0.9999,
+                        help="EMA decay for model weights. 0 disables EMA. "
+                        "0.9999 ≈ 10K-step horizon — standard for DDPM.")
+    parser.add_argument("--grad-clip", type=float, default=1.0,
+                        help="Max gradient norm. Set higher (e.g., 50) if loss-scale is intentionally bumped.")
     args = parser.parse_args()
+    if args.vae_type == "custom" and not args.vae:
+        parser.error("--vae is required when --vae-type=custom")
     class_weights = None
     if args.class_weights:
         class_weights = torch.tensor([float(x) for x in args.class_weights.split(",")])
@@ -118,16 +146,40 @@ def main():
 
     print(f"=== Config ===")
     print(f"  cfg_prob: {args.cfg_prob}")
+    print(f"  local_module: {args.local_module}")
     print(f"  lr: {args.lr}, batch: {args.batch}, epochs: {args.epochs}")
     print(f"  output: {args.output}")
     print(f"==============")
 
     # Load frozen VAE encoder
-    vae = RoadVAE().to(device)
-    vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
+    if args.vae_type == "sdxl":
+        print("Loading frozen SDXL pretrained VAE (madebyollin/sdxl-vae-fp16-fix)")
+        vae = RoadVAESDXL().to(device)
+    elif args.vae_type == "custom-v2":
+        print(f"Loading RoadVAEv2 checkpoint: {args.vae} "
+              f"(base_ch={args.vae_base_ch}, latent_channels={args.vae_latent_channels})")
+        vae = RoadVAEv2(base_ch=args.vae_base_ch, latent_channels=args.vae_latent_channels).to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
+    else:
+        print(f"Loading custom VAE checkpoint: {args.vae}")
+        vae = RoadVAE().to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     vae.eval()
     for p in vae.parameters():
         p.requires_grad_(False)
+
+    # Calibrate SDXL VAE per-channel shift/scale on actual training distribution
+    # (default photographic 0.13025 is wrong for our palette inputs).
+    if args.vae_type == "sdxl":
+        print("Calibrating SDXL VAE per-channel scaling on training set...")
+        calib_loader = DataLoader(
+            RoadLayoutDataset(
+                [d for d in sorted(glob.glob(os.path.join(args.data, "*"))) if "irving_tx" not in d],
+                augment=False,
+            ),
+            batch_size=args.batch, shuffle=True, num_workers=2,
+        )
+        vae.calibrate(calib_loader, max_batches=64)
 
     all_dirs = sorted(glob.glob(os.path.join(args.data, "*")))
     train_dirs = [d for d in all_dirs if "irving_tx" not in d]
@@ -140,15 +192,44 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=2)
     val_dl = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2)
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=7).to(device)
+    net = DiffusionUNet(latent_channels=args.vae_latent_channels, cond_channels=7, local_module=args.local_module).to(device)
     ddpm = DDPM(T=1000)
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999))
     start_epoch = 0
+
+    # EMA tracker — Karras 2024 / Ho 2020 standard. Shadow weights updated
+    # per step; eval / sampling / saving uses EMA weights.
+    ema_state = None
+    if args.ema_decay > 0:
+        ema_state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        print(f"  EMA enabled, decay={args.ema_decay}")
+
+    def ema_update():
+        if ema_state is None:
+            return
+        with torch.no_grad():
+            for k, v in net.state_dict().items():
+                if v.dtype.is_floating_point:
+                    ema_state[k].mul_(args.ema_decay).add_(v.detach(), alpha=1 - args.ema_decay)
+                else:
+                    ema_state[k].copy_(v)
+
+    def swap_in_ema():
+        """Returns a saved-state callable that restores live weights when called."""
+        if ema_state is None:
+            return lambda: None
+        live_copy = {k: v.detach().clone() for k, v in net.state_dict().items()}
+        net.load_state_dict(ema_state, strict=True)
+        return lambda: net.load_state_dict(live_copy, strict=True)
 
     if args.resume:
         ckpt = torch.load(args.resume, map_location=device)
         net.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        if ema_state is not None and "ema" in ckpt:
+            for k in ema_state:
+                ema_state[k].copy_(ckpt["ema"][k].to(device))
+            print("  EMA state restored")
         start_epoch = ckpt["epoch"] + 1
         print(f"Resumed from epoch {start_epoch}")
 
@@ -163,13 +244,18 @@ def main():
             with torch.no_grad():
                 mu, logvar = vae.encode(road)
                 x0 = vae.reparameterize(mu, logvar)
+                weight_latent = (
+                    compute_class_weight_latent(vae, road, class_weights)
+                    if class_weights is not None
+                    else None
+                )
             loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
-                                      road=road if class_weights is not None else None,
-                                      class_weights=class_weights)
+                                      weight_latent=weight_latent)
             optimizer.zero_grad()
             loss.backward()
-            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(net.parameters(), args.grad_clip)
             optimizer.step()
+            ema_update()
             train_loss += loss.item()
             grad_norm_sum += grad_norm.item()
             n_batches += 1
@@ -178,8 +264,9 @@ def main():
         avg_grad = grad_norm_sum / n_batches
         print(f"Epoch {epoch + 1}: train_loss={avg_train:.6f}, grad_norm={avg_grad:.4f}")
 
-        # Validation loss
+        # Validation loss — run on EMA weights (the ones we'll actually deploy)
         if (epoch + 1) % args.val_every == 0:
+            restore_live = swap_in_ema()
             net.eval()
             val_loss = 0.0
             n_val = 0
@@ -188,25 +275,37 @@ def main():
                     cond, road = cond.to(device), road.to(device)
                     mu, logvar = vae.encode(road)
                     x0 = vae.reparameterize(mu, logvar)
+                    weight_latent = (
+                        compute_class_weight_latent(vae, road, class_weights)
+                        if class_weights is not None
+                        else None
+                    )
                     loss = ddpm.training_loss(net, x0, cond, cfg_prob=args.cfg_prob,
-                                      road=road if class_weights is not None else None,
-                                      class_weights=class_weights)
+                                      weight_latent=weight_latent)
                     val_loss += loss.item()
                     n_val += 1
-            print(f"  val_loss={val_loss / n_val:.6f}")
+            print(f"  val_loss={val_loss / n_val:.6f}  (EMA weights)")
+            restore_live()
             net.train()
 
-        # Sample image generation
+        # Sample image generation — also EMA
         if (epoch + 1) % args.sample_every == 0:
+            restore_live = swap_in_ema()
             path = save_progress_samples(vae, net, ddpm, val_ds, device, epoch + 1, samples_dir)
             print(f"  Saved sample → {path}")
+            restore_live()
 
+        # Checkpoint — save both live and EMA weights
         if (epoch + 1) % 10 == 0:
             path = os.path.join(args.output, f"diffusion_epoch_{epoch + 1:03d}.pth")
-            torch.save(
-                {"epoch": epoch, "model": net.state_dict(), "optimizer": optimizer.state_dict()},
-                path,
-            )
+            ckpt = {
+                "epoch": epoch,
+                "model": net.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            }
+            if ema_state is not None:
+                ckpt["ema"] = ema_state
+            torch.save(ckpt, path)
             print(f"  Saved {path}")
 
 
