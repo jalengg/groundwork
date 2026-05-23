@@ -45,16 +45,21 @@ def main():
         print(f"  symlinked {link} -> {src / sub}")
 
     # Build metadata.jsonl
+    # file_name MUST be relative (imagefolder builder convention)
+    # conditioning_image MUST be absolute (we cast_column to Image() in the
+    # training script after load, and PIL resolves paths against cwd which
+    # won't match the data_dir).
     target_files = sorted((src / "target").glob("*.png"))
     print(f"Found {len(target_files)} target tiles")
     with open(dst / "metadata.jsonl", "w") as f:
         for t in target_files:
             cap_path = src / "meta" / f"{t.stem}.txt"
             cap = cap_path.read_text().strip() if cap_path.exists() else ""
+            cond_abs = (src / "cond" / t.name).resolve()
             f.write(json.dumps({
                 "file_name": f"target/{t.name}",
                 "text": cap,
-                "conditioning_image": f"cond/{t.name}",
+                "conditioning_image": str(cond_abs),
             }) + "\n")
     print(f"Wrote {dst / 'metadata.jsonl'}")
 
