@@ -47,17 +47,18 @@ echo "DATA_DIR=$DATA_DIR"
 echo "MAX_STEPS=$MAX_STEPS"
 echo "========================================"
 
-accelerate launch --num_processes 1 --mixed_precision bf16 \
+accelerate launch --num_processes 1 --mixed_precision fp16 \
     third_party/train_controlnet_sdxl.py \
     --pretrained_model_name_or_path=stabilityai/stable-diffusion-xl-base-1.0 \
     --pretrained_vae_model_name_or_path=madebyollin/sdxl-vae-fp16-fix \
     --output_dir="$OUT_DIR" \
+    --dataset_name=imagefolder \
     --train_data_dir="$DATA_DIR" \
     --image_column=image \
     --caption_column=text \
     --conditioning_image_column=conditioning_image \
     --resolution=1024 \
-    --mixed_precision=bf16 \
+    --mixed_precision=fp16 \
     --train_batch_size=1 \
     --gradient_accumulation_steps=8 \
     --gradient_checkpointing \
