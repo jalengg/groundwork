@@ -2,6 +2,13 @@
 
 A running log of experiments, hypotheses tested, and what we believe matters going forward. Useful if you're trying to reproduce CaRoLS for road-network synthesis, or just want to know what didn't work and why.
 
+> **➤ Final approach (May 2026):** the CaRoLS reproduction path documented
+> below was abandoned in favor of an **SDXL + ControlNet** fine-tune. See
+> [`sdxl_controlnet.md`](sdxl_controlnet.md) for the working method. The
+> findings here remain valuable as the diagnostic record that motivated
+> the pivot — particularly the 4-agent council reviews that established
+> the small-model approach had a real ceiling.
+
 ---
 
 ## Architecture / data baseline

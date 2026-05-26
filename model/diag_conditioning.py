@@ -35,6 +35,8 @@ from model.postprocess import vectorize_layout
 from model.train_diffusion import onehot_to_rgb
 from model.unet import DiffusionUNet
 from model.vae import RoadVAE
+from model.vae_sdxl import RoadVAESDXL
+from model.vae_v2 import RoadVAEv2
 
 
 # Channel layout matches data_pipeline.osm_layers.LANDUSE_CATEGORIES
@@ -75,7 +77,12 @@ def run_inference(net, vae, ddpm, cond, device, seed=42, w=3.0, postprocess=Fals
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vae", required=True)
+    parser.add_argument("--vae", default=None)
+    parser.add_argument("--vae-type", choices=["custom", "custom-v2", "sdxl"], default="custom")
+    parser.add_argument("--vae-base-ch", type=int, default=96,
+                        help="custom-v2 only: must match training run.")
+    parser.add_argument("--vae-latent-channels", type=int, default=4,
+                        help="custom-v2 only: must match training run.")
     parser.add_argument("--diffusion", required=True)
     parser.add_argument("--data", default="data/")
     parser.add_argument("--tile-idx", type=int, default=0)
@@ -91,11 +98,21 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    vae = RoadVAE().to(device)
-    vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
+    if args.vae_type == "sdxl":
+        vae = RoadVAESDXL().to(device)
+    elif args.vae_type == "custom-v2":
+        if not args.vae:
+            parser.error("--vae required when --vae-type=custom-v2")
+        vae = RoadVAEv2(base_ch=args.vae_base_ch, latent_channels=args.vae_latent_channels).to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
+    else:
+        if not args.vae:
+            parser.error("--vae required when --vae-type=custom")
+        vae = RoadVAE().to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     vae.eval()
 
-    net = DiffusionUNet(latent_channels=4, cond_channels=7, local_module=args.local_module).to(device)
+    net = DiffusionUNet(latent_channels=args.vae_latent_channels, cond_channels=7, local_module=args.local_module).to(device)
     net.load_state_dict(torch.load(args.diffusion, map_location=device)["model"])
     net.eval()
 

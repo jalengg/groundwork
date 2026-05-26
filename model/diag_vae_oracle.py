@@ -34,7 +34,9 @@ from torch.utils.data import DataLoader
 from data_pipeline.dataset import RoadLayoutDataset
 from model.train_diffusion import onehot_to_rgb
 from model.vae import RoadVAE
+from model.vae_fsq import RoadVAEFSQ
 from model.vae_sdxl import RoadVAESDXL
+from model.vae_v2 import RoadVAEv2
 
 
 def per_class_iou_road_pixels(pred_idx, gt_idx, n_classes=5):
@@ -158,8 +160,14 @@ def save_visual_grid(vae, loader, sigmas, out_path, n_tiles=4, device="cpu"):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--vae-type", choices=["custom", "sdxl"], default="sdxl")
+    p.add_argument("--vae-type", choices=["custom", "custom-v2", "fsq", "sdxl"], default="sdxl")
     p.add_argument("--vae", default=None)
+    p.add_argument("--base-ch", type=int, default=96,
+                   help="custom-v2/fsq only: base channel count to match training run.")
+    p.add_argument("--latent-channels", type=int, default=4,
+                   help="custom-v2 only: latent channel count to match training run.")
+    p.add_argument("--fsq-levels", default="8,5,5,5",
+                   help="fsq only: comma-separated level counts to match training run.")
     p.add_argument("--data", default="data/")
     p.add_argument("--out-dir", required=True)
     p.add_argument("--calibrate-sdxl", action="store_true",
@@ -173,6 +181,17 @@ def main():
 
     if args.vae_type == "sdxl":
         vae = RoadVAESDXL().to(device)
+    elif args.vae_type == "custom-v2":
+        if not args.vae:
+            p.error("--vae required for --vae-type=custom-v2")
+        vae = RoadVAEv2(base_ch=args.base_ch, latent_channels=args.latent_channels).to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
+    elif args.vae_type == "fsq":
+        if not args.vae:
+            p.error("--vae required for --vae-type=fsq")
+        levels = tuple(int(x) for x in args.fsq_levels.split(","))
+        vae = RoadVAEFSQ(base_ch=args.base_ch, levels=levels).to(device)
+        vae.load_state_dict(torch.load(args.vae, map_location=device)["model"])
     else:
         if not args.vae:
             p.error("--vae required for --vae-type=custom")
