@@ -19,8 +19,8 @@
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
-OUT_DIR="${OUT_DIR:-/scratch/jalenj4/runs/sdxl_cnet_soviet_v1}"
-DATA_DIR="${DATA_DIR:-/u/jalenj4/groundwork/data/flux_cnet_soviet_hf}"
+OUT_DIR="${OUT_DIR:-/scratch/jalenj4/runs/sdxl_cnet_soviet_microrayon_v1}"
+DATA_DIR="${DATA_DIR:-/u/jalenj4/groundwork/data/flux_cnet_soviet_microrayon_hf}"
 MAX_STEPS="${MAX_STEPS:-25000}"
 
 source .venv/bin/activate
