@@ -1,9 +1,9 @@
 # Multi-Style Expansion Plan
 
-Produced 2026-05-31. Picks up from the working US suburbs SDXL ControlNet
-(`jalengg/groundwork-sdxl-cnet-us-suburbs`, trained on 17 Sun Belt cities,
-25 k steps, ~35 A100-hours). Goal: expand to capture representative global
-city morphologies for the Cities Skylines mod.
+Produced 2026-05-31; revised 2026-05-31. Picks up from the working US suburbs
+SDXL ControlNet (`jalengg/groundwork-sdxl-cnet-us-suburbs`, trained on 17 Sun
+Belt cities, 25 k steps, ~35 A100-hours). Goal: expand to capture representative
+global city morphologies for the Cities Skylines mod.
 
 **Scope:** plan only — no data acquisition or training in this document.
 
@@ -11,237 +11,517 @@ city morphologies for the Cities Skylines mod.
 
 ## 1. Stylistic Taxonomy
 
-### Framing
+### Literature Survey
 
-The existing model encodes one morphological type: the **post-war US automobile
-suburb** — cul-de-sac collector networks, wide arterials, large superblocks,
-low connectivity, strong motorway presence. Everything else is out-of-distribution.
+The initial draft of this plan cited only four sources (Conzen, Hillier,
+Marshall, Moudon). That's the Anglophone morphology canon but leaves out
+major work on American urban structure, post-colonial urbanism, African cities,
+and Latin American urban form. A broader survey:
 
-Four scholarly frameworks bear directly on what makes road networks *visually
-and structurally distinct* at the raster scale we operate at (5 m/px, ~2.5 km
-tiles):
+**Form typologies and street structure:**
 
-- **Conzen (1960)** — "town plan" = street pattern + plot pattern + building
-  pattern. His three-part morphological region framework identifies the "burgage
-  cycle" (organic medieval accumulation vs. planned extensions vs. fringe belts).
-  At our resolution, the street pattern component is what matters.
-- **Hillier & Hanson (1984), Hillier (1996)** — Space syntax. Global integration
-  vs. local integration, axial maps. Medieval organics have low global integration;
-  grids are globally integrated; housing estates have discontinuous structure.
-- **Marshall (2005)** — *Streets & Patterns*. "Directional" (strong through-routes),
-  "grid" (uniform), "organically planned" (irregular but coherent), "cellular"
-  (superblocks, internal access only).
-- **Moudon (1994)** — Morphological periods tied to transport technology eras.
-  Pre-automobile (foot/horse) → tram/streetcar → car. Each produces a visually
-  distinct tile signature.
+- **Kostof (1991, 1992)** — *The City Shaped* / *The City Assembled*. The most
+  comprehensive historical typology. Kostof identifies: organic pattern, the
+  grid, the city of grand design (baroque/Haussmann), the industrial city, the
+  automobile city. His grid chapter distinguishes the Greek Hippodamian grid,
+  the Roman castrum, the colonial Spanish grid, and the American section-line
+  grid — these look similar at street scale but differ in block proportions,
+  hierarchy, and plot structure.
+- **Conzen (1960)** — "town plan" analysis: street pattern + plot pattern +
+  building pattern. The "burgage cycle" and "morphological frame" concepts.
+  His fringe belt concept explains why European cities have concentric rings of
+  different morphological character.
+- **Hillier & Hanson (1984), Hillier (1996)** — Space syntax. Global vs. local
+  integration, axial maps, the "deformed grid." Medieval cities tend toward low
+  global integration; grids tend toward high; housing estates have disconnected
+  local structure.
+- **Marshall (2005)** — *Streets & Patterns*. "Directional" (strong
+  through-routes), "grid" (uniform), "organically planned" (irregular but
+  coherent), "cellular" (superblocks, internal access only). Directly applicable
+  at our tile scale.
+- **Moudon (1994)** — Morphological periods tied to transport technology.
+  Pre-automobile organic → streetcar suburb → automobile suburb. Each era leaves
+  a visible physical trace.
+- **Panerai, Castex & Depaule (1977/2004)** — *Urban Forms: The Death and Life
+  of the Urban Block*. The evolution of the European perimeter block and its
+  dissolution under CIAM modernism (superblocks). Directly explains the visual
+  difference between `euro_grid` and `soviet_microrayon`.
+- **Habraken (1998)** — *Structure of the Ordinary*. Type/fabric theory.
+  Thematic structure (the controlled) vs. tissue structure (the ordinary).
+
+**American urban structure:**
+
+- **Vance (1990)** — *The Continuing City*. Traces the American grid from the
+  Land Ordinance of 1785 through the streetcar suburb. The section-line grid
+  (mile-square sections) is the organizing structure of most US cities —
+  arterials at 1-mile intervals, internal curvilinear residential streets are
+  a *deliberate design reaction* against the grid, not its absence.
+- **Jackson (1985)** — *Crabgrass Frontier*. The political economy of US
+  suburban sprawl. FHA underwriting guidelines (1934–1960s) explicitly required
+  curvilinear streets and cul-de-sacs to qualify for mortgage insurance —
+  this is why post-war suburbs look the way they do.
+- **Southworth & Ben-Joseph (2003)** — *Streets and the Shaping of Towns and
+  Cities*. The evolution from grid (pre-1920) → curvilinear (1920–1960) →
+  cul-de-sac (1960–present). The key distinction for our taxonomy: "curvilinear"
+  ≠ "cul-de-sac." Curvilinear streets are winding but through-connected;
+  cul-de-sac streets terminate. Pre-war streetcar suburbs and LA's postwar
+  inner neighborhoods are curvilinear-through; post-1970 Sun Belt suburbs
+  are cul-de-sac-cellular.
+- **Soja (1996, 2000)** — *Thirdspace*, *Postmetropolis*. Los Angeles as the
+  paradigmatic postmodern city. The "exopolis" structure: decentralized
+  employment nodes, edge cities, arterial commercial at section-line intervals,
+  no dominant downtown. The LA basin's street network is structurally the
+  section-line arterial grid with residential infill that is curvilinear but
+  not cul-de-sac — unlike the Sun Belt suburbs that our current model was
+  trained on.
+- **Davis (1990)** — *City of Quartz*. The security/fortress urbanism of LA's
+  neighborhoods, which includes fortified residential enclaves that are partial
+  cul-de-sac networks (gated). A complication for tile sampling.
+
+**Latin American urban form:**
+
+- **Griffin & Ford (1980), Ford (1996)** — *A model of Latin American city
+  structure*. The Latin American city has a distinctive zonal structure: CBD +
+  elite spine + concentric zones of decreasing formal quality → peripheral
+  informal. The colonial Laws of the Indies grid (1573 Ordinances) governs the
+  formal urban core (central plaza, orthogonal blocks ~80–100 m). The periphery
+  grows organically under different logic entirely.
+- **Hardoy (1982)** — *Urbanization in Latin America*. Pre-Colombian and colonial
+  urban forms. Distinguishes indigenous organic urban forms (Tenochtitlan) from
+  Spanish imposition of the orthogonal grid.
+- **Caldeira (2000)** — *City of Walls* (São Paulo). Fortress urbanism, walled
+  condominiums, and the spatial politics of exclusion. Relevant for understanding
+  why the formal/informal boundary is so sharp in Brazilian cities.
+- **Roy (2011)** — *Slumdog Cities*. Global comparison of informal urbanization
+  processes. Shows that LatAm favelas, South Asian informal settlements, and
+  African informal settlements have structurally different growth patterns.
+- **Davis (2006)** — *Planet of Slums*. Global survey of informal settlement
+  morphology and density. Key point: favelas in Rio/Medellín grow up steep
+  hillsides as terrain-constrained organic structures; African informal
+  settlements (Nairobi, Lusaka) often grow on flat terrain as planned-but-
+  unserviced subdivisions or spontaneous flat-terrain organic settlements.
+
+**African urban form:**
+
+- **UN-Habitat (2014)** — *The State of African Cities*. Comprehensive survey.
+  Identifies four broadly different African urban morphological contexts: (1)
+  colonial-planned formal cities (Nairobi CBD, Harare, Accra); (2) indigenous
+  West African compound city (Ibadan, Kano, Lagos Island); (3) informal
+  peripheral settlements (Kibera, Mathare, Khayelitsha); (4) post-independence
+  planned townships (Soweto, Cape Flats).
+- **Rakodi (1997)** — *The Urban Challenge in Africa*. Argues that African cities
+  cannot be understood through a single "African city" archetype — there are at
+  minimum three distinct morphological families (Anglophone colonial, Francophone
+  colonial, and indigenous).
+- **Fourchard (2011)** — *Urban History of Sub-Saharan Africa*. The South African
+  township (apartheid-era formal planning) is structurally distinct from both
+  informal settlements and indigenous organic cities. It uses a regular
+  orthogonal grid with very small plots — visually similar to American urban
+  grid but at much smaller scale.
+- **Myers (2011)** — *African Cities*. Challenges the idea that African cities
+  are defined by informality. Many major African cities (Kigali, Addis Ababa)
+  have undergone massive formal planning transformations in the 2000s–2020s.
+
+**Key insight from the literature for our taxonomy:** the error in the first
+draft was treating "Africa" and "LatAm informal" as single categories. The
+literature shows three distinct African morphologies (colonial grid, informal
+flat-terrain, indigenous organic) and two distinct LatAm morphologies
+(Laws-of-the-Indies colonial grid, terrain-constrained informal). Additionally,
+the US has three distinct morphologies within Moudon's automobile era:
+pre-war grid, inner curvilinear (LA-type), and post-war cul-de-sac (existing
+training data).
 
 ### Proposed Style Classes
 
-The key question is: what is *actually distinguishable* in a 512×512 px
-5 m/pixel raster of road networks? Two styles that look the same at this
-resolution shouldn't be separate training classes — the model can't learn the
-distinction. Based on that constraint:
+The organizing question remains: **what is actually distinguishable in a
+512×512 px, 5 m/px raster of road networks?** Two styles that look the same
+at this scale don't need separate training runs.
 
-| # | Style ID | Description | Morphological basis |
-|---|----------|-------------|---------------------|
-| 0 | `us_suburb` | **(existing)** Cul-de-sac collector network, large blocks, arterial/motorway hierarchy | Moudon post-car; Marshall "cellular" |
-| 1 | `euro_grid` | Regular medium-density grid, wide through-boulevards, small-to-medium blocks | Haussmann (Paris), Cerdà (Barcelona Eixample), Laws of the Indies; Marshall "directional" |
-| 2 | `medieval_organic` | Irregular, winding streets, no grid, high intersection density, small blocks | Conzen organic; Hillier low global integration; Marshall "organically planned" |
-| 3 | `soviet_microrayon` | Superblocks with internal loops, few through-streets, collector-dominated, very low road density | Mikrorayon/Plattenbau typology; Marshall "cellular" but with discontinuous internal structure |
-| 4 | `latam_informal` | Dense organic mesh, terrain-following, high cul-de-sac and dead-end ratio, minimal hierarchy | Self-organized (Turner 2001), Hillier "deformed grids" |
-| 5 | `east_asian_dense` | Very high road density, fine-grain grid or near-grid, minimal motorway within tile, alleys present | Japanese *chō* subdivision, Korean *hanok* districts; Moudon pre-car+car hybrid |
+At 512 px × 5 m/px = 2.56 km tiles, the distinguishable features are:
+- Road density (total road pixels / tile area)
+- Connectivity (intersection density, dead-end fraction)
+- Block size (typical void area between roads)
+- Hierarchy presence (which of the 5 road classes appear)
+- Regularity (parallel lines, right angles vs. organic)
+- Terrain coupling (roads following contours vs. cutting through)
 
-**6 total styles including existing**, each producing a visually distinct raster
-signature at our tile scale.
+With those axes, the proposed taxonomy expands from 6 to **11 styles** (10 new
++ existing):
 
-**Styles not added and why:**
+| # | Style ID | Family | Road signature at 5 m/px |
+|---|----------|--------|--------------------------|
+| 0 | `us_suburb` | US | **Existing.** Low density, cul-de-sac terminals, strong class-3/4 arterial, nearly no class-2 through-grid |
+| 1 | `us_grid` | US | Medium-high density, uniform right-angle grid, class-1/2/3 all present, alley network in many cities |
+| 2 | `us_arterial` | US | Class-3 arterials at regular ~1.6 km intervals, internal curvilinear class-1 that are through-connected (not cul-de-sac) |
+| 3 | `euro_grid` | European | Dense medium blocks ~100–150 m, class-2 roads form the primary grid, wide class-3 boulevard axis, no cul-de-sacs |
+| 4 | `medieval_organic` | European | Irregular, winding, no parallel lines, very high class-1/2 intersection density, small irregular blocks |
+| 5 | `soviet_microrayon` | Post-socialist | Very low density, large open voids, class-1 loops internal to superblocks, class-3 collector ring |
+| 6 | `latam_colonial` | Latin American | Regular orthogonal grid ~80–100 m blocks, dense class-2 network, central plaza void, flat terrain typically |
+| 7 | `latam_informal` | Latin American | Dense class-1 organic mesh, terrain-following winding streets, very high dead-end fraction, minimal class-3/4 |
+| 8 | `africa_informal` | African | Moderate-density class-1 organic mesh, typically flat terrain (unlike LatAm hillside), compound-wall topology, more regular than LatAm informal |
+| 9 | `africa_township` | African | Small regular orthogonal grid (apartheid-era South African township), very small blocks ~50 m, class-1 dominant, uniform |
+| 10 | `east_asian_dense` | East Asian | Very high density, class-1/service alley network, fine-grain near-grid ~60–80 m blocks, minimal class-4 |
 
-- *Latin American colonial grid* — visually nearly identical to `euro_grid` at
-  5 m/px. Same tag distribution, same block proportions. Not worth a separate
-  training run; include as cities in `euro_grid`.
-- *Suburban UK / Australian* — intermediate between `us_suburb` and `medieval_organic`.
-  Adds noise rather than a new mode.
-- *MENA medina* (Fez, Marrakech) — extremely high dead-end ratio (Islamic
-  "khuttas") is structurally interesting but OSM coverage of medina streets is
-  patchy and the visual signature overlaps substantially with `medieval_organic`
-  at 5 m/px. Defer to v2.
-- *South/Southeast Asian mixed* — interesting but very high OSM tag variability
-  and coverage gaps. Defer to v2.
+**11 styles total** including existing. At ~35 A100-hours each, 10 new runs =
+350 GPU-hours.
 
-### Distinguishability at 5 m/px
+### Why Each Style Is Distinguishable
 
-At 512 px × 5 m/px = 2.56 km tiles:
+**`us_grid` vs `us_suburb` vs `us_arterial`:**
+- `us_suburb` (existing): tile contains cul-de-sacs visible as terminal
+  branches, no through-streets in residential zones, strong motorway presence
+- `us_grid`: all streets are through-connected at right angles; alleys appear
+  as dense class-1 mesh behind the main grid; block size ~60–100 m (smaller
+  than suburb superblocks)
+- `us_arterial`: wide class-3 arterials visible at regular ~1.6 km intervals,
+  internal residential streets winding but passing through (no terminals at
+  residential streets), large internal blocks ~300–500 m
 
-- `us_suburb` vs `soviet_microrayon`: both "cellular" but differ in block size
-  (US: ~200-300 m blocks; Soviet: ~400-600 m superblocks) and internal access
-  density (US has many cul-de-sacs; Soviet has few internal roads)
-- `euro_grid` vs `east_asian_dense`: differ in intersection spacing (~80-120 m
-  Japan/Korea vs ~120-200 m Europe) and alley presence
-- `medieval_organic` is visually unmistakable — no parallel lines, highly
-  irregular, dense intersections
+These are distinguishable because the cul-de-sac terminal signature and the
+1-mile arterial grid rhythm are both visible at 5 m/px resolution.
+
+**`latam_colonial` vs `euro_grid`:**
+The first draft wrongly folded these together. They are distinguishable:
+- `latam_colonial`: block size ~80–100 m (slightly smaller than Haussmann's
+  ~120–150 m), uniform orthogonal grid covering the entire tile with minimal
+  hierarchy variation, central plaza creates a characteristic void at the grid
+  center, typically flat terrain → uniform G (green/parks) channel
+- `euro_grid`: larger blocks, more hierarchy variation (Haussmann boulevards
+  are visually wider than cross-streets), more complex landuse patterning
+  (mixed-use dense ground floors = `commercial` B-channel alongside residential)
+
+**`latam_informal` vs `africa_informal`:**
+- `latam_informal`: frequently steep terrain → roads visible following contours
+  diagonally across the tile; very high elevation channel variance
+- `africa_informal`: typically flat terrain → elevation channel flat;
+  compound-wall topology creates larger internal voids than LatAm favelas
+  (compounds = walled clusters with one entrance, creating quasi-dead-ends at
+  a different scale than hillside favelas)
+
+**`africa_township` vs `us_grid`:**
+- `africa_township`: extremely small blocks (~50 m vs. ~80 m US grid), much
+  lower road class diversity (almost entirely class-1), little to no commercial
+  landuse B-channel, very uniform residential G-channel
+- `us_grid`: alley network creates a two-tier density pattern, more landuse
+  diversity, class-2/3 arterials present at regular intervals
+
+### Styles Deferred
+
+- **West African compound city** (`ibadan_organic`, Kano traditional core):
+  structurally interesting (compound walling creates a topology distinct from
+  both medieval European organic and African informal), but OSM coverage of
+  traditional cores in Ibadan, Kano, and Lagos Island is poor to fair. Defer
+  to v2 pending OSM improvement or dedicated mapping campaign.
+- **MENA medina** (Fez, Marrakech): very high dead-end fraction (Islamic
+  *khuttas*) would create a distinctive tile signature, but OSM street coverage
+  inside medinas is patchy. Defer to v2.
+- **Post-independence African formal** (Kigali Vision 2020 new developments,
+  Addis Ababa Bole): recently-planned African urban extensions resemble
+  `soviet_microrayon` or `euro_grid` depending on the project. Not a distinct
+  style; sample from existing styles for these areas.
+- **South/Southeast Asian mixed** (Mumbai, Jakarta): very high OSM tag
+  variability and coverage gaps. Defer to v2.
+- **Australian/UK suburb**: intermediate between `us_suburb` and
+  `medieval_organic`. Too ambiguous to train a clean model on.
 
 ---
 
 ## 2. City List Per Style
 
-### Style 1: `euro_grid`
+### Style 1: `us_grid`
 
-Target: ~150 tiles/city, 12-15 cities, mix of downtown and periphery.
+Pre-automobile American city grids. Sample from residential/commercial
+neighborhoods, not downtown cores (where office towers dominate and landuse
+patterns are unusual). Avoid cities already in `us_suburb` training data.
+
+| City | State | Notes | OSM coverage |
+|------|-------|-------|--------------|
+| Portland (Sellwood, Woodstock) | OR | Textbook American grid with alley system, residential | Excellent |
+| Denver (Capitol Hill, Highlands) | CO | 1880s grid, alleys common, good terrain variation | Excellent |
+| Chicago (Bridgeport, Pilsen) | IL | The canonical American alley grid; dense class-1 | Excellent |
+| Philadelphia (West Philly, Fishtown) | PA | Rowhouse grid, very uniform blocks ~75 m | Excellent |
+| Minneapolis (Powderhorn, Longfellow) | MN | Clean American grid, good landuse mix | Excellent |
+| Salt Lake City (Sugar House, Liberty) | UT | Very wide grid (132-foot streets from Plat of Zion); distinctive | Excellent |
+| Cincinnati (Clifton, Norwood) | OH | Hilly American grid, tests terrain interaction | Excellent |
+| Kansas City (Hyde Park, Westport) | MO | Streetcar-era grid | Excellent |
+| Baltimore (Hampden, Remington) | MD | Dense rowhouse grid, clear landuse delineation | Excellent |
+| St. Louis (Maplewood, Webster Groves) | MO | Inner-ring streetcar suburb grid | Excellent |
+| Buffalo (Elmwood, Allentown) | NY | Olmsted parkways embedded in grid | Excellent |
+| Milwaukee (Bay View, Walker's Point) | WI | Dense Great Lakes grid, industrial+residential mix | Excellent |
+
+**Tile strategy:** use city district boundaries, not admin city limits. The admin
+limits include modern suburbs that look like `us_suburb`. Sample within the
+1880–1930 built area (roughly inside the pre-WWII expansion ring).
+
+**OSM note:** US cities have excellent OSM coverage. Alley systems are tagged as
+`highway=service` in OSM, which bins into road class 1 — alley-heavy cities
+(Chicago, Denver, KC, Baltimore) will have noticeably higher class-1 density
+than non-alley cities (Portland, Minneapolis). This is correct behavior.
+
+---
+
+### Style 2: `us_arterial`
+
+The LA-type inner suburban zone: section-line arterials at ~1.6 km intervals,
+large residential superblocks with curvilinear through-streets (not cul-de-sacs).
+Post-war (1945–1975) automobile-era but before the switch to pure cul-de-sac.
+Associated with Soja's "postmodern city" and Vance's "automobile city" without
+the full cul-de-sac commitment.
+
+| City | State | Notes | OSM coverage |
+|------|-------|-------|--------------|
+| Los Angeles (Culver City, Mar Vista) | CA | Canonical example; flat residential with arterial rhythm | Excellent |
+| Los Angeles (Palms, Westchester) | CA | More uniform, tests variation within LA basin | Excellent |
+| Los Angeles (Van Nuys, Reseda) | CA | San Fernando Valley, flat section-line structure | Excellent |
+| Glendale (residential interior) | CA | Avoids downtown, captures the inner-suburban zone | Excellent |
+| Burbank (residential east) | CA | Industrial+residential mix, good B-channel variation | Excellent |
+| Phoenix (Arcadia neighborhood) | AZ | Pre-cul-de-sac Phoenix; different from Henderson training data | Excellent |
+| Tucson (Sam Hughes, Rincon Heights) | AZ | Streetcar-era Tucson, curvilinear through-streets | Excellent |
+| Long Beach (Bixby Knolls, Wrigley) | CA | Flat residential, clear arterial structure | Excellent |
+| San Jose (Willow Glen, Cambrian) | CA | Silicon Valley inner suburban | Excellent |
+| Sacramento (Elmhurst, Oak Park) | CA | Grid+curvilinear hybrid zone | Excellent |
+| Albuquerque (Nob Hill, Ridgecrest) | NM | Flat SW inner suburban, minimal terrain variation | Excellent |
+| Denver (Barnum, Harvey Park) | CO | Post-war Denver inner ring, curvilinear but through | Excellent |
+
+**What makes this different from `us_suburb`:** In training data from
+Henderson NV / Chandler AZ, residential streets terminate at cul-de-sacs.
+In these cities, residential streets wind but connect to the next arterial.
+The OSM `highway=residential` network will show a different connectivity
+graph — fewer dead-ends, more 4-way or T intersections at non-arterial
+junctions.
+
+**OSM note:** Excellent for all. The critical feature — through-connectivity
+of residential streets — is well-captured in OSM because mappers trace
+drivable streets regardless of curvilinearity.
+
+---
+
+### Style 3: `euro_grid`
+
+Planned bourgeois grids: Haussmann, Cerdà, Gründerzeit, and their
+equivalents. Revised to exclude LatAm colonial cities (now their own style)
+but can include colonial African planned cities as secondary examples.
 
 | City | Country | Notes | OSM coverage |
 |------|---------|-------|--------------|
-| Paris 13e/14e (not 1er) | France | Haussmann grid without tourist congestion | Excellent |
-| Barcelona Eixample | Spain | Cerdà grid, chamfered corners, textbook exemplar | Excellent |
-| Brussels inner ring | Belgium | Mixed Haussmann + organic fringe | Excellent |
-| Vienna Margareten/Favoriten | Austria | Gründerzeit grid, good mix | Excellent |
-| Milan Porta Vittoria/Navigli | Italy | Radial+grid mix, not downtown core | Excellent |
-| Buenos Aires Almagro/Boedo | Argentina | Laws of the Indies + 20c grid; tests LatAm colonial | Very good |
-| Montevideo Cordón | Uruguay | Clean colonial grid, good OSM | Very good |
-| Lyon Part-Dieu | France | Modern French grid, contrast with medieval Vieux-Lyon | Excellent |
-| Bordeaux Saint-Michel | France | Mix of medieval + Haussmann, manageable | Excellent |
-| Porto Bonfim | Portugal | Hilly grid, tests elevation interaction | Good |
-| Athens Kallithéa | Greece | Dense Athenian grid, no motorways inside tiles | Good |
+| Paris 13e/14e | France | Haussmann grid away from tourist core | Excellent |
+| Barcelona Eixample | Spain | Cerdà grid with chamfered corners, textbook | Excellent |
+| Brussels inner ring | Belgium | Haussmann-influenced grid + fringe | Excellent |
+| Vienna Margareten/Favoriten | Austria | Gründerzeit ring-road grid | Excellent |
+| Milan Porta Vittoria/Navigli | Italy | Radial+grid, varied landuse | Excellent |
+| Lyon Part-Dieu | France | Modern French grid | Excellent |
+| Bordeaux Saint-Michel | France | Haussmann + organic fringe mix | Excellent |
+| Porto Bonfim | Portugal | Hilly grid, terrain interaction | Good |
+| Athens Kallithéa | Greece | Dense Athenian grid, no motorway penetration | Good |
 | Turin Crocetta/Nizza | Italy | Rational Piedmontese grid | Excellent |
+| Addis Ababa Bole (formal areas) | Ethiopia | Post-2000 planned African grid, good OSM | Good |
+| Nairobi Westlands/Parklands | Kenya | Colonial British grid, good OSM, diverse landuse | Very good |
 
-**Tile strategy:** sample from residential and commercial districts, not historic
-centers (those belong in `medieval_organic`). Use the city admin boundary minus
-~1 km inward to avoid both the medieval core and outer periurban.
-
-**OSM landuse coverage note:** European cities have excellent `landuse=residential`,
-`landuse=commercial`, and `landuse=industrial` coverage. `landuse=retail` is less
-consistently tagged in Greece and Portugal — the `commercial` channel will be
-sparser. Acceptable.
+**Note on African colonial grids:** Nairobi Parklands and Addis Ababa's formal
+planned zones have the same visual signature as European planned grids — regular
+~120–150 m blocks, class-2/3 road hierarchy. Including them in `euro_grid`
+training data adds morphological diversity without requiring a separate training
+run. These are *not* the same as `africa_township` (which is smaller-block,
+class-1 dominant).
 
 ---
 
-### Style 2: `medieval_organic`
+### Style 4: `medieval_organic`
 
-These cities have well-preserved pre-automobile historic cores. Sample only
-from within the medieval walled boundary, or its functional equivalent.
+Pre-automobile organic European cores. Sample only from within the medieval
+walled boundary or its functional equivalent.
 
 | City | Country | Notes | OSM coverage |
 |------|---------|-------|--------------|
-| Bologna centro storico | Italy | Largest medieval center in Italy, well-mapped | Excellent |
+| Bologna centro storico | Italy | Largest medieval center in Italy | Excellent |
 | Bruges | Belgium | UNESCO site, exceptional OSM | Excellent |
-| Chester | UK | Roman+ medieval, walled city | Excellent |
-| Colmar | France | Exceptionally intact Alsatian medieval core | Excellent |
-| Siena | Italy | UNESCO, minimal car penetration preserves street structure | Excellent |
+| Chester | UK | Roman+medieval walled city | Excellent |
+| Colmar | France | Intact Alsatian medieval core | Excellent |
+| Siena | Italy | UNESCO, minimal car penetration | Excellent |
 | Toledo | Spain | Islamic+medieval palimpsest | Very good |
-| Faro old town | Portugal | Small but clean exemplar | Good |
-| Ghent Patershol | Belgium | Irregular medieval quarter, adjacent to grid | Excellent |
-| York Shambles area | UK | Well-mapped | Excellent |
-| Regensburg Altstadt | Germany | UNESCO Danube crossing | Excellent |
-| Lucca | Italy | Intact city walls, Roman street grid fossilized into medieval | Excellent |
-| Tallinn Vanalinn | Estonia | Well-mapped, northern European | Excellent |
+| Ghent Patershol | Belgium | Irregular medieval quarter | Excellent |
+| York Shambles | UK | Well-mapped | Excellent |
+| Regensburg Altstadt | Germany | UNESCO Danube crossing city | Excellent |
+| Lucca | Italy | Intact Roman→medieval street grid | Excellent |
+| Tallinn Vanalinn | Estonia | Northern European medieval, excellent OSM | Excellent |
+| Strasbourg Grande Île | France | UNESCO island medieval core | Excellent |
 
-**Tile strategy:** tile centers placed inside the medieval perimeter. At 512 px
-@ 5 m/px = 2.56 km, most medieval cores fit within 1-3 tiles. Will produce
-fewer tiles per city than suburban styles (~50-80 vs 150). To compensate,
-use more cities.
-
-**Important:** many medieval cores include large plazas (piazze, market squares)
-which will appear as large `bg` (background) areas. This is correct and the model
-should learn that `medieval_organic` tiles have a different bg/road ratio than
-suburban tiles.
+**Tile strategy:** medieval cores are small (~50–80 tiles per city vs. ~150 for
+suburban). Tile centers within medieval perimeter only. More cities compensate
+for lower tile yield.
 
 ---
 
-### Style 3: `soviet_microrayon`
+### Style 5: `soviet_microrayon`
 
-Eastern European and Soviet-era housing estates. Characterized by large
-residential slabs set in open space, served by collector roads with no
-through-street grid.
+Eastern European and Soviet-era housing estates.
 
 | City | Country | Notes | OSM coverage |
 |------|---------|-------|--------------|
-| Warsaw Ursynów | Poland | Large, well-documented mikrorayon | Excellent |
-| Warsaw Praga-Południe | Poland | Mix of pre-war and Soviet, tiles from postwar part | Excellent |
-| Prague Jižní Město | Czech Republic | Canonical Czechoslovak panelák estate | Excellent |
-| Bratislava Petržalka | Slovakia | Europe's largest housing estate by population | Excellent |
-| Budapest Újpalota | Hungary | Large Hungarian housing estate | Very good |
-| Vilnius Fabijoniškės | Lithuania | Well-mapped, appeared in Chernobyl TV series | Excellent |
-| Tallinn Lasnamäe | Estonia | Baltic Soviet estate, excellent OSM | Excellent |
-| Bucharest Drumul Taberei | Romania | Ceaușescu-era, variable OSM | Good |
-| Kyiv Troieshchyna | Ukraine | Large Soviet estate; OSM quality may vary post-2022 | Variable |
+| Warsaw Ursynów | Poland | Large, well-documented | Excellent |
+| Prague Jižní Město | Czech Republic | Canonical panelák estate | Excellent |
+| Bratislava Petržalka | Slovakia | Europe's largest housing estate | Excellent |
+| Budapest Újpalota | Hungary | Hungarian housing estate | Very good |
+| Vilnius Fabijoniškės | Lithuania | Well-mapped | Excellent |
+| Tallinn Lasnamäe | Estonia | Baltic Soviet estate | Excellent |
+| Bucharest Drumul Taberei | Romania | Ceaușescu-era | Good |
 | Leipzig Grünau | Germany | DDR Plattenbau, excellent German OSM | Excellent |
 | Erfurt Johannesvorstadt | Germany | East German estate | Excellent |
-| Krakow Nowa Huta | Poland | Planned socialist city, UNESCO candidate | Excellent |
-
-**OSM note:** German DDR cities have the best coverage. Baltic states are excellent.
-Bucharest and Kyiv are acceptable but landuse polygon coverage is spottier.
-
-**Road channel note:** `soviet_microrayon` tiles will have almost no `motorway`
-channel hits (class 4). The road hierarchy is shallow: mostly `residential`
-(class 1) and a few `primary` (class 3). This means the model needs to learn
-a different class distribution than `us_suburb`. Per-style ControlNet handles
-this naturally; a multi-style model would need balancing.
+| Krakow Nowa Huta | Poland | Planned socialist city | Excellent |
+| Riga Purvciems | Latvia | Soviet-era Latvian estate | Excellent |
+| Kyiv Troieshchyna | Ukraine | Large Soviet estate; verify OSM quality post-2022 | Variable |
 
 ---
 
-### Style 4: `latam_informal`
+### Style 6: `latam_colonial`
 
-Informal settlements (favelas, comunas, villas miserias). Very high road
-density from organic growth, often on steep terrain. OSM coverage is the
-most variable of all styles — see §3.
+The Laws of the Indies colonial grid (Spanish Royal Ordinances of 1573).
+Characteristic features: strict orthogonality, ~80–100 m blocks (half the
+size of Haussmann), central plaza void, typically flat terrain, dense
+uniform `residential`/`commercial` B-channel distribution.
+
+This is morphologically distinct from `euro_grid` (see §1 taxonomy note).
+The Spanish colonial grid predates Haussmann by 250 years, produces smaller
+tighter blocks, and the central-plaza void is a recurring feature.
 
 | City | Country | Notes | OSM coverage |
 |------|---------|-------|--------------|
-| Medellín Comunas 1-3 (NE hillside) | Colombia | HDM4/OpenCities project improved OSM significantly | Good–Very good |
-| Bogotá Ciudad Bolívar (periphery) | Colombia | Large, tiles from lower slopes | Fair–Good |
+| Buenos Aires San Telmo/Almagro | Argentina | Colonial+19c grid, best OSM in LatAm | Very good |
+| Montevideo Ciudad Vieja/Cordón | Uruguay | Clean colonial grid | Very good |
+| Bogotá La Candelaria/Chapinero | Colombia | Colonial core + planned extensions | Good |
+| Lima Cercado/Barranco | Peru | Colonial Lima, flat, dense | Good |
+| Oaxaca Centro | Mexico | UNESCO; small-city colonial grid, plaza-dominant | Very good |
+| Guadalajara Analco/San Juan | Mexico | Large colonial grid city | Good |
+| Cusco Centro | Peru | Inca+Spanish grid hybrid, distinctive OSM | Very good |
+| Santiago (Barrio Italia, Yungay) | Chile | 19c colonial extension grid | Very good |
+| Quito La Mariscal/La Floresta | Ecuador | UNESCO; Andean colonial grid | Good |
+| Córdoba (Argentina) Nueva Córdoba | Argentina | Good OSM, classic grid | Very good |
+| Asunción Centro | Paraguay | Colonial grid, improving OSM | Fair–Good |
+| Valparaíso Plan area | Chile | Port grid on flat lower city (not hillside) | Good |
+
+**OSM note:** Argentina, Uruguay, and Chile have the best LatAm OSM coverage.
+Bogotá, Quito, Lima are acceptable. Use HOT Tasking Manager completion maps
+before finalizing city list. Prefer larger cities for tile count.
+
+**Tag note:** `landuse=commercial` and `landuse=retail` are less consistently
+tagged as area polygons in LatAm — shops exist as POIs, not mapped areas.
+The B channel will be sparser than European grids for equivalent commercial
+activity. This is a dataset characteristic, not a pipeline bug.
+
+---
+
+### Style 7: `latam_informal`
+
+Favelas, comunas, villas miserias, asentamientos. Characterized by
+terrain-constrained organic growth, steep elevation channel variation, very
+high class-1 road density, minimal class-3/4 presence.
+
+| City | Country | Notes | OSM coverage |
+|------|---------|-------|--------------|
+| Medellín Comunas 1-3 (NE hills) | Colombia | OpenCities Medellín significantly improved OSM | Good–Very good |
 | Rio de Janeiro Rocinha | Brazil | Most-mapped favela globally | Very good |
 | Rio de Janeiro Complexo do Alemão | Brazil | HOT Tasking Manager coverage | Good |
-| Lima Villa El Salvador | Peru | Planned informal grid hybrid, interesting edge case | Good |
-| Lima Comas | Peru | Less planned, more organic | Fair |
-| Santiago La Pintana | Chile | Chilean población, OSM improving | Good |
-| Caracas Petare | Venezuela | Massive; OSM patchy in interior | Fair |
+| Lima Villa El Salvador | Peru | Planned informal grid hybrid | Good |
+| Santiago La Pintana/El Bosque | Chile | Chilean población, OSM improving | Good |
 | São Paulo Heliópolis | Brazil | Brasil mapping activities | Good |
-| Fortaleza Bom Jardim | Brazil | Less studied, may be sparse | Fair |
+| Bogotá Ciudad Bolívar | Colombia | Large, sample lower slopes for OSM quality | Fair–Good |
+| Caracas Petare | Venezuela | Massive; exterior zones better mapped | Fair |
+| Fortaleza Bom Jardim | Brazil | Less studied | Fair |
+| Medellin El Popular/Santa Cruz | Colombia | Additional high-hill communes | Good |
 
-**Coverage strategy:** use the HOT Tasking Manager completion map to select
-specific districts with ≥70% road mapping completeness. The `overpy` / `osmnx`
-query will succeed but return a sparse graph in under-mapped areas — sparse
-graphs produce mostly-background tiles that pollute training. Filter: drop tiles
-where total road pixel fraction < 3% of tile area (road rasterization gives a
-usable signal; below 3% is just background noise).
-
-**Landuse note:** `landuse=residential` dominates almost entirely with nearly
-zero `commercial` or `industrial`. The B channel in cond will be nearly uniform.
-This is fine — the ControlNet must learn to generate informal organic road
-patterns given a mostly-residential cond input.
+**Tile filter:** drop tiles with road pixel fraction <3% (under-mapped areas
+produce mostly-background tiles; see §6). Kyiv data quality note does not apply
+here but Caracas and Fortaleza need pre-sampling verification.
 
 ---
 
-### Style 5: `east_asian_dense`
+### Style 8: `africa_informal`
 
-Fine-grain high-density grids. Includes Japanese *chō*-based subdivisions
-(very small blocks, alleys = `highway=service`), Korean residential, and
-Taiwanese districts.
+Sub-Saharan African informal settlements. Key morphological difference from
+`latam_informal`: typically **flat terrain** (Kibera, Mathare, Khayelitsha all
+on flat or gently rolling ground), compound-wall structure creates larger walled
+voids than LatAm favelas, road class distribution is even flatter (almost
+entirely class-1 tracks and paths, some of which are tagged `highway=path`
+rather than `highway=residential` in OSM).
+
+**Important OSM caveat:** `highway=path` and `highway=track` (common in African
+informal settlements) are *not* included in the road channel filter in
+`road_layers.py`. A significant fraction of internal circulation in these
+settlements would be invisible to the pipeline. This requires a pipeline change:
+either include `path`+`track` as class-1 roads for this style, or accept
+that the pipeline captures only the vehicle-accessible network (which may still
+be sufficient to capture the morphological signature).
 
 | City | Country | Notes | OSM coverage |
 |------|---------|-------|--------------|
-| Tokyo Nerima ward | Japan | Mid-density residential, *chō* block structure | Excellent |
+| Nairobi Kibera | Kenya | Most-mapped informal settlement globally; HOT | Very good |
+| Nairobi Mathare | Kenya | Adjacent to Kibera, different topology | Good |
+| Nairobi Korogocho | Kenya | Smaller, denser | Good |
+| Dar es Salaam Manzese | Tanzania | Flat informal, well-mapped | Good |
+| Dar es Salaam Tandale | Tanzania | Dense, flat | Good |
+| Kampala Kisenyi/Katanga | Uganda | Hilly-ish informal, tests variation | Good |
+| Lagos Makoko (accessible areas) | Nigeria | Water-adjacent informal; partial | Fair |
+| Accra Nima/Mamobi | Ghana | Flat informal, improving OSM | Fair–Good |
+| Maputo Chamanculo C/D | Mozambique | Flat, HOT coverage | Good |
+| Lusaka Kanyama | Zambia | Large flat informal settlement | Good |
+| Khayelitsha (Cape Town) | South Africa | South African township+informal mix; see also `africa_township` | Very good |
+| Harare Epworth | Zimbabwe | Peri-urban informal | Fair |
+
+---
+
+### Style 9: `africa_township`
+
+South African apartheid-era townships and similar post-colonial planned-but-
+unserviced residential estates. Structurally distinct from informal: regular
+small orthogonal grid (~40–60 m blocks), class-1 dominant but through-connected
+(unlike cul-de-sac suburbs), very uniform residential landuse, typically flat.
+
+Visible difference from `us_grid`: much smaller blocks (US grid ~75–100 m);
+almost no commercial/industrial B-channel diversity (entire township is
+`landuse=residential`); no alley system.
+
+| City | Country | Notes | OSM coverage |
+|------|---------|-------|--------------|
+| Soweto (formal sections: Meadowlands, Diepkloof) | South Africa | Canonical township, very well mapped | Excellent |
+| Khayelitsha (formal grid sections) | South Africa | Separate tiles from informal sections | Very good |
+| Mitchell's Plain (Cape Town) | South Africa | Large township, flat grid | Very good |
+| Tembisa (Ekurhuleni) | South Africa | Large Gauteng township | Very good |
+| Mamelodi (Pretoria) | South Africa | Apartheid-era formal | Good |
+| Harare Mbare/Highfield | Zimbabwe | Colonial Rhodesian township grid | Good |
+| Lusaka Chilenje/Mandevu | Zambia | Zambian township grid | Fair–Good |
+| Nairobi Eastlands (Buruburu) | Kenya | Post-independence planned estate | Good |
+| Bulawayo Makokoba | Zimbabwe | One of the oldest African townships | Good |
+
+**OSM note:** South African townships are exceptionally well-mapped (active
+South African OSM community). Zimbabwe and Zambia are fair.
+
+**Pipeline note:** The `africa_township` small block size (~50 m) means tiles
+will have higher road density than `us_grid` even though they appear visually
+sparser (narrower streets, class-1 only). The road rasterization line width
+(`class_widths = {1: 2, ...}` pixels) remains appropriate.
+
+---
+
+### Style 10: `east_asian_dense`
+
+Fine-grain high-density grids. Japan/Korea/Taiwan only; mainland China excluded
+(GCJ-02 coordinate offset + legally restricted surveying creates systematic
+OSM errors; see §3).
+
+| City | Country | Notes | OSM coverage |
+|------|---------|-------|--------------|
+| Tokyo Nerima ward | Japan | Mid-density residential *chō* | Excellent |
 | Tokyo Suginami ward | Japan | Residential+commercial mix | Excellent |
 | Osaka Naniwa/Nishi ward | Japan | Denser than Tokyo wards | Excellent |
-| Kyoto Fushimi ward | Japan | Includes traditional *machi* blocks | Excellent |
+| Kyoto Fushimi ward | Japan | Traditional *machi* blocks | Excellent |
 | Seoul Mapo-gu | South Korea | Post-war grid + informal infill | Excellent |
 | Seoul Nowon-gu | South Korea | 1980s suburban apartment + grid | Excellent |
 | Busan Busanjin-gu | South Korea | Hillside + grid mix | Excellent |
-| Taipei Zhongzheng District | Taiwan | Colonial Japanese grid preserved | Excellent |
+| Taipei Zhongzheng District | Taiwan | Japanese colonial grid preserved | Excellent |
 | Taipei Neihu | Taiwan | Post-war dense grid | Excellent |
-| Incheon Michuhol-gu | South Korea | Industrial + residential mix | Very good |
 | Sapporo Toyohira-ku | Japan | Post-war Hokkaido grid | Excellent |
 | Nagoya Midori-ku | Japan | Suburban Japanese grid | Excellent |
-
-**OSM note:** Japan has extraordinary OSM coverage — among the best globally.
-Korea and Taiwan are very good. China mainland is explicitly excluded: OSM
-coverage is systematically incomplete due to legal restrictions on surveying
-(China's Surveying and Mapping Law), and the geographic coordinate offset
-(GCJ-02 vs WGS84) creates systematic position errors in OSM-derived data.
-
-**Road channel note:** `highway=service` (alleys, driveways) is extremely common
-in Japanese tiles and is binned into road class 1 (`residential`). Japanese
-tiles will have the highest road pixel density of any style — likely 2-3× the
-road fraction of US suburbs.
+| Incheon Michuhol-gu | South Korea | Industrial + residential mix | Very good |
 
 ---
 
@@ -251,218 +531,168 @@ road fraction of US suburbs.
 
 | Style | OSM road quality | Key risks |
 |-------|-----------------|-----------|
-| `euro_grid` | Excellent in W/C Europe; Good in SE Europe | None for recommended cities |
-| `medieval_organic` | Excellent for all recommended cities | Very short alleys may be missing in some cities |
-| `soviet_microrayon` | Excellent in Baltic/Poland/Czech; Variable in Ukraine/Romania | Kyiv post-2022 quality unknown — consider dropping or verifying |
-| `latam_informal` | Highly variable, use HOT completion % filter | Must apply road-density drop filter (see §2) |
-| `east_asian_dense` | Excellent for Japan/Korea/Taiwan | Do not use Chinese mainland cities |
+| `us_grid` | Excellent | None |
+| `us_arterial` | Excellent | None |
+| `euro_grid` | Excellent W/C Europe; Good SE Europe | None for recommended cities |
+| `medieval_organic` | Excellent for all recommended cities | Narrow alleys sometimes missing |
+| `soviet_microrayon` | Excellent Baltic/Poland/Czech; Variable Ukraine/Romania | Verify Kyiv post-2022 |
+| `latam_colonial` | Very good Argentina/Uruguay/Chile; Good elsewhere | Pre-sample Asunción; drop if sparse |
+| `latam_informal` | Variable; use HOT completion % filter | Apply 3% road-density drop filter |
+| `africa_informal` | Variable; HOT campaigns helped Nairobi/DSM | `highway=path` not in pipeline; see §6 |
+| `africa_township` | Excellent South Africa; Good elsewhere | Zambia/Zimbabwe need verification |
+| `east_asian_dense` | Excellent Japan/Korea/Taiwan | Do not use Chinese mainland |
 
-**Practical filter for sparse tiles:** in `data_pipeline/dataset.py`, add a
-`min_road_fraction` parameter. Load the road `.npy`, compute
-`(road[1:].sum(0) > 0).mean()` and skip tiles below threshold. Recommend 0.03
-(3%) for informal styles, 0.05 for all others.
+### OSM Landuse Coverage
 
-### OSM Landuse Polygon Coverage
+No new issues beyond what was identified for the original 6 styles. The new US
+and African styles introduce one additional tag gap:
 
-Landuse coverage is globally inconsistent. The pipeline's 5 landuse categories
-use these OSM tags:
+- **US cities with alleys:** `highway=service` roads include both alleys and
+  driveways/parking aisles. This inflates class-1 count. No fix needed — the
+  model learns alley density as a style feature.
+- **Africa informal + township:** `landuse=residential` is the dominant tag
+  and is consistently mapped, but `landuse=commercial` is almost absent (shops
+  are POIs, not area polygons). The B channel will be near-zero for most African
+  tiles. This is the actual ground truth — these areas are residential-only —
+  so it's not a pipeline defect.
 
-```
-residential  → landuse=residential, landuse=apartments
-commercial   → landuse=commercial, landuse=retail
-industrial   → landuse=industrial, landuse=warehouse
-parkland     → landuse=park, recreation_ground, nature_reserve, forest, grass, meadow
-agricultural → landuse=farmland, landuse=farmyard
-```
+### Terrain Data
 
-**European cities:** `landuse=residential` and `landuse=commercial` are
-well-populated. `leisure=park` is common but `landuse=park` sometimes not tagged;
-the `LANDUSE_TAGS` query in `osm_layers.py` already includes
-`"leisure": ["park", "recreation_ground", "golf_course"]` which captures this.
-No changes needed.
+SRTM1 (30 m, global 60°S–60°N) covers all recommended cities. No changes.
 
-**Latin American cities:** `landuse=residential` dominates. `landuse=commercial`
-mapping is inconsistent (many shops are individual POIs, not area polygons).
-The B channel in cond will be sparser but this is acceptable — the ControlNet
-learns from what's there.
-
-**East Asian cities (Japan):** Japan has good `landuse` coverage at the broad
-polygon level but uses a different breakdown than Europe. `landuse=residential`
-and `landuse=commercial` are present; `landuse=industrial` is well-tagged.
-However, Japanese cities are dense enough that the `commercial` channel will be
-unusually large (dense shop districts).
-
-**Soviet microrayon:** `landuse=residential` covers the housing estates well.
-Green space between slabs is often tagged `landuse=grass` or `leisure=park`.
-The G channel (green/parks) will be high. Industrial zones are typically
-adjacent, not mixed.
-
-### Terrain Data (SRTM1)
-
-`elevation_layer.py` downloads SRTM1 (30 m resolution) from
-`elevation-tiles-prod` on AWS. SRTM1 covers 60°S–60°N with no gaps for any
-recommended city. No terrain data changes needed.
-
-One caveat: the current code downloads only the single SRTM tile for the tile
-center point. If a data tile spans a SRTM tile boundary (e.g., a 2.56 km tile
-near a 1°×1° SRTM grid edge), the elevation data may have a hard edge mid-tile.
-For US Sun Belt cities this was never an issue. For cities near SRTM tile
-boundaries (many European cities span boundaries more often due to smaller tiles),
-consider upgrading to multi-tile fetch. This is a moderate-priority fix.
+`latam_informal` (hillside favelas) will exercise the elevation channel heavily —
+tile-level normalization in `encode_cond` means a steep hillside tile will
+use the full `[0,1]` R channel range, while flat African tiles will be ~uniform.
+This is the desired behavior.
 
 ### Regional Tag Differences
 
-The most important regional OSM tag differences:
-
 | Region | Issue | Impact | Mitigation |
 |--------|-------|--------|------------|
-| Japan | `highway=service` accounts for alleys, driveways, parking lot aisles — very common | Road class 1 count inflated vs US | Acceptable; model learns Japanese road density natively |
-| Germany | `landuse=allotments` (Kleingärten) very common; not in our `parkland` category | Allotments appear as uncategorized pixels | Low impact; add `allotments` to parkland category (see §6) |
-| France/Spain | `landuse=farmland` common near tile edges in suburban peripheries | Agricultural channel active, looks like US rural | No issue; channel is present |
-| Latin America | `landuse=residential` is tagged but often as a large undifferentiated polygon | B channel lower than visual reality | Accept; informal neighborhoods are genuinely residential-dominated |
-| East Europe (Soviet) | `landuse=grass` between housing slabs well-tagged; G channel higher | Model should learn green-between-slabs as a style feature | Desired behavior |
-| UK | `landuse=brownfield`, `landuse=construction` not in our taxonomy | Miscellaneous untagged pixels | Low impact; add `brownfield` → industrial as low-priority |
+| Germany/Poland | `landuse=allotments` very common | Parkland channel sparse without it | Add to `parkland` tags (§6) |
+| Africa informal | `highway=path`/`track` = primary circulation | Road network appears sparse | Add path/track to class-1 for this style; see §6 |
+| Japan | `highway=service` = alleys (very dense) | Class-1 inflated; correct behavior | None needed |
+| LatAm all | `landuse=commercial` rare as polygon | B channel sparse | Accept; informative feature |
+| South Africa | `landuse=residential` dominates uniformly | B channel flat for entire township | Accept; correct |
 
 ---
 
 ## 4. Architecture Decision
 
-### Option A: One Multi-Style ControlNet (8-channel cond)
+*(Unchanged from first draft — reasoning still holds with expanded style set.)*
 
-Add a style index as an 8th channel: `cond[7] = style_id / (N-1)` normalized to
-`[0,1]`. The ControlNet encoder sees 8 channels. Requires re-training from
-scratch (our current ControlNet head is initialized from SDXL UNet encoder
-weights which expect 3-channel RGB input — changing to 8 channels invalidates
-those weights).
+### Option A: One Multi-Style ControlNet
 
-Alternatively: encode style via the **text prompt** instead of a new channel.
-SDXL already has a CLIP text encoder. Changing the prompt to
-`"top-down raster of a European medieval road network, ..."` per-style is
-architecturally free.
+Adding a style-code channel or relying on text conditioning runs into the same
+problem at 10 styles as at 5: the text encoder's contribution is empirically
+weak in this setup (postmortem: *"The text-prompt is irrelevant"*). An 8th
+channel style code requires re-training the ControlNet head from scratch, losing
+the US-suburbs warm start. Option A is not appropriate for this phase.
 
-**Problem:** the postmortem established that *"The text-prompt is irrelevant in
-this setup. ControlNet with a constant per-tile caption doesn't use the text
-encoder for class differentiation — all of it comes from the ControlNet input."*
-Text-based style conditioning would require actively re-training the model to
-attend to the text encoder output for style, which is a different problem from
-what our current setup does.
+### Option B: N Per-Style ControlNets
 
-**Verdict on Option A:** The text-conditioning approach requires recovering
-text-encoder guidance (non-trivial, high risk of style bleeding); the 8-channel
-approach requires re-training the ControlNet head from scratch (loses the
-US-suburbs warm start). Neither is appropriate for this phase.
+**Recommendation: 10 per-style ControlNets, each fine-tuned from `sdxl_cnet_v1`.**
 
-### Option B: N Per-Style ControlNets Fine-Tuned from US Suburbs
+Updated compute budget:
 
-Each new style is a fine-tuning job starting from `sdxl_cnet_v1`:
-- Initialize new ControlNet from the US suburbs checkpoint
-- Train on the new style's tiles for ~25 k steps (~35 A100-hours)
-- Save as a separate `~3 GB` safetensors file
-
-**Parameter count:** unchanged — still ~1.4 B trainable ControlNet params per
-model. No architecture changes required.
-
-**Compute budget for 5 new styles:**
-
-| Style | Cities | Est. tiles | Est. A100-hours |
-|-------|--------|-----------|-----------------|
+| Style | Cities | Est. tiles | A100-hours |
+|-------|--------|-----------|------------|
+| `us_grid` | 12 | ~1,800 | 35 |
+| `us_arterial` | 12 | ~1,800 | 35 |
 | `euro_grid` | 12 | ~1,800 | 35 |
 | `medieval_organic` | 12 | ~700 | 35 |
 | `soviet_microrayon` | 12 | ~1,500 | 35 |
-| `latam_informal` | 8 (filtered) | ~800 | 35 |
+| `latam_colonial` | 12 | ~1,600 | 35 |
+| `latam_informal` | 10 (filtered) | ~800 | 35 |
+| `africa_informal` | 12 (filtered) | ~700 | 35 |
+| `africa_township` | 9 | ~1,200 | 35 |
 | `east_asian_dense` | 12 | ~2,000 | 35 |
-| **Total** | | **~6,800 new tiles** | **175 A100-hours** |
+| **Total** | | **~13,900 tiles** | **350 A100-hours** |
 
-**Storage:** 5 × ~3 GB = ~15 GB on HF Hub (plus ~45 GB scratch for checkpoints
-during training, purged after upload).
-
-**Inference deployment:** 5 model checkpoints loaded per-request. Since the
-Cities Skylines mod uses a cloud inference endpoint, the deployment can load one
-model at a time based on the user's style selection. Memory footprint: ~12 GB
-VRAM per active model (same as current). No change to inference architecture.
-
-**Recommendation: Option B.** Per-style ControlNets are the right call because:
-
-1. The US suburbs prior is a useful warm start even for very OOD styles —
-   the ControlNet head's early layers encode road-detection priors (parallel
-   lines, junctions, hierarchy by color) that transfer across styles.
-2. Each model is independently tunable. If `medieval_organic` under-trains,
-   we run it for 10 k more steps without touching the other models.
-3. No risk of style bleeding. A multi-style model trained on unbalanced data
-   risks averaging medieval organic + suburban grid into something that looks
-   like neither.
-4. Incremental: we can ship `euro_grid` while `soviet_microrayon` is still
-   training.
-5. Text-based style conditioning is empirically broken in our setup per the
-   postmortem. Recovering it is a separate research problem.
+Storage: 10 × ~3 GB = ~30 GB on HF Hub.
 
 ---
 
 ## 5. Phased Rollout
 
-Order by: (a) visual payoff — how different from `us_suburb`, (b) OSM coverage
-confidence, (c) training difficulty.
+Order by: (a) visual distance from `us_suburb`, (b) OSM confidence, (c)
+pipeline changes required. Styles requiring new pipeline work (§6) deferred
+until those changes are validated.
 
-### Phase 1: `euro_grid` — add immediately
+### Phase 1: `us_grid` — immediate
 
-**Why first:** highest visual contrast with US suburbs + best OSM coverage of
-any non-US style. US suburbs have no continuous block fronts, no mixed-use
-ground floors, no Haussmann 8-story cornice lines reflected in road hierarchy.
-The `euro_grid` produces distinctly different outputs because:
-- Blocks are ~100 m × 100 m vs US ~200-300 m
-- No cul-de-sacs
-- `tertiary` and `secondary` roads form the primary grid (not arterials)
-- `motorway` channel is absent inside most tiles (motorways ring cities, don't
-  penetrate the grid)
+**Why first:** highest OSM confidence (US), requires zero pipeline changes
+(same OSM tag set, same SRTM range), and is visually very OOD from `us_suburb`
+(through-connected grid, alley network, small blocks). The model has never seen
+a through-connected residential grid — all training data has cul-de-sac
+topology. Validating the pipeline on a US city before attempting non-US cities
+is also a useful sanity check: we can visually compare output on Chicago
+neighborhoods against training data we know well.
 
-The US model is *maximally wrong* on European grid input because it has never
-seen tight uniform blocks without cul-de-sacs.
+### Phase 2: `us_arterial`
 
-**Data work:** cities.yaml entry for each of 12 cities, run the standard
-pipeline, prep dataset, single SLURM job.
+Same reasoning as Phase 1. US data, zero pipeline risk. The arterial grid
+rhythm is a very different topological signal from both `us_suburb` and
+`us_grid`. This is the most common morphology in the western US that the
+current model gets wrong (most of suburban LA, inner Phoenix, inner Tucson
+tiles fed to the current model would produce `us_suburb`-style cul-de-sac
+outputs).
 
-### Phase 2: `soviet_microrayon`
+### Phase 3: `euro_grid`
 
-**Why second:** visually very distinct from both US suburbs and European grid —
-the superblock topology produces large empty areas between sparse collector roads,
-which is completely OOD from the model trained on tight grids. The tile signature
-looks like open-field terrain with a few roads floating in it.
+First non-US style. Requires prompt parameterization fix (§6). Best OSM of any
+non-US style, most visually distinct from all US styles (no cul-de-sacs, uniform
+blocks, boulevard hierarchy). The US model is *maximally wrong* on European grid
+because it predicts cul-de-sac terminals wherever it sees residential inputs.
 
-Also structurally the most interesting from a Cities Skylines perspective —
-superblock city designs are a popular CS challenge.
+### Phase 4: `latam_colonial`
 
-**OSM risk is low** for the Baltic/Polish/Czech subset.
+Colonial grid after European grid. The distinction is visible at 5 m/px (smaller
+blocks, plaza void). OSM is good for Argentina/Uruguay/Chile. Requires verifying
+that the prompt correctly signals "colonial grid" vs "European grid" — may reveal
+whether text conditioning has any discriminative power for structurally-similar
+styles.
 
-### Phase 3: `medieval_organic`
+### Phase 5: `soviet_microrayon`
 
-**Why third:** high visual payoff but produces fewer tiles per city (small area
-covered), so we need more cities to hit tile count targets. Data acquisition
-is more labor-intensive (manual review of city boundaries to exclude non-medieval
-areas). Run after Phase 2 infrastructure is proven.
+Superblock topology after we have grids working. German DDR cities first (best
+OSM). Most visually distinct from everything: the large void between roads is
+unlike any grid style.
 
-### Phase 4: `east_asian_dense`
+### Phase 6: `medieval_organic`
 
-**Why fourth:** Japan/Korea OSM is excellent and the fine-grain alley structure
-is visually compelling. But `east_asian_dense` requires verifying that Japanese
-`highway=service` inclusion is sensible (it may produce extremely high road
-density tiles that confuse the model). Test this in Phase 4 only after we know
-our road-density filter works from Phase 1.
+Small tile yield per city means more data acquisition overhead. Run after
+Phase 5 validates the per-style training pipeline.
 
-### Phase 5: `latam_informal`
+### Phase 7: `east_asian_dense`
 
-**Why last:** highest OSM coverage uncertainty. Run after the pipeline
-improvements needed for sparse-tile filtering (§6) are validated in earlier
-phases. Also the most unusual in road palette distribution (nearly all class 1,
-no class 4), which might require tuning training steps.
+Excellent data; requires verifying that Japanese alley density doesn't cause
+rasterization artifacts (very high class-1 pixel fraction). Defer until Phase 4
+sparse-tile filter is validated.
+
+### Phase 8: `africa_township`
+
+South African data is excellent. Run after pipeline's `highway=path` issue is
+addressed (§6) so we understand what road class handling looks like for Africa.
+Township OSM doesn't use paths heavily so this could be Phase 6 — but sequencing
+it after informal styles avoids confusion between township and informal tiles.
+
+### Phase 9: `latam_informal`
+
+Requires HOT completion filter and sparse-tile filter. Run after Phase 3
+validates non-US pipeline.
+
+### Phase 10: `africa_informal`
+
+Most pipeline-fragile style (path/track issue) and most variable OSM. Last.
 
 ---
 
 ## 6. Data Pipeline Portability Check
 
-The existing `data_pipeline/` was designed for US Sun Belt cities. Below are
-specific breakage points for non-US regions, ordered by severity.
+*(Expanded from first draft to cover new styles.)*
 
-### Critical: PROMPT hardcoded to "US suburban" in `prep_flux_dataset.py`
+### Critical: PROMPT hardcoded in `prep_flux_dataset.py`
 
 ```python
 PROMPT = (
@@ -472,97 +702,64 @@ PROMPT = (
 )
 ```
 
-This is written to every `meta/{city}_{id}.txt`. For non-US styles, the text
-conditioning is weak (per postmortem) but baking "US suburban" into all metadata
-for a European medieval training run is actively wrong — the 10% non-empty
-caption dropout means the model will occasionally see "US suburban" during
-medieval training and receive conflicting signal.
-
-**Fix:** Parameterize `prep_flux_dataset.py` with a `--style` argument that
-maps to a prompt template:
+**Fix:** `--style` argument with a prompt map:
 
 ```python
 PROMPTS = {
-    "us_suburb":       "top-down satellite-style raster of a US suburban road network, ...",
-    "euro_grid":       "top-down satellite-style raster of a European grid city road network, ...",
-    "medieval_organic":"top-down satellite-style raster of a medieval European road network, ...",
-    "soviet_microrayon":"top-down satellite-style raster of a Soviet housing estate road network, ...",
-    "latam_informal":  "top-down satellite-style raster of a Latin American informal settlement road network, ...",
-    "east_asian_dense":"top-down satellite-style raster of a dense East Asian city road network, ...",
+    "us_suburb":        "top-down raster of a US suburban road network, ...",
+    "us_grid":          "top-down raster of an American urban grid city road network, ...",
+    "us_arterial":      "top-down raster of an American inner suburban arterial grid road network, ...",
+    "euro_grid":        "top-down raster of a European planned grid city road network, ...",
+    "medieval_organic": "top-down raster of a medieval European road network, ...",
+    "soviet_microrayon":"top-down raster of a Soviet housing estate road network, ...",
+    "latam_colonial":   "top-down raster of a Latin American colonial grid city road network, ...",
+    "latam_informal":   "top-down raster of a Latin American informal settlement road network, ...",
+    "africa_informal":  "top-down raster of a sub-Saharan African informal settlement road network, ...",
+    "africa_township":  "top-down raster of a sub-Saharan African township road network, ...",
+    "east_asian_dense": "top-down raster of a dense East Asian city road network, ...",
 }
 ```
 
-Also update `cities.yaml` to include per-city `style:` annotation (already
-has top-level `style: us_suburb`; make it per-city or per-file).
+Also add `style:` per-city field to `cities.yaml` or use per-style YAML files.
 
-### Moderate: `LANDUSE_TAGS` missing regionally common tags in `osm_layers.py`
+### Critical (Africa styles): `highway=path`/`track` not in road filter
 
-The `LANDUSE_TAGS` dict is `{"landuse": True, "leisure": ["park", "recreation_ground", "golf_course"]}`.
-Missing for non-US regions:
-
-- `landuse=allotments` — extremely common in Germany, Poland, Czech Republic
-  (allotment gardens / Kleingärten). These visually break up residential areas.
-  **Add to `parkland` category** (they're green space):
-  ```python
-  ("parkland", ["park", "recreation_ground", "nature_reserve", "forest",
-                "grass", "meadow", "allotments", "village_green"]),
-  ```
-- `landuse=brownfield`, `landuse=construction` — common in Eastern Europe during
-  post-Soviet redevelopment. Not critical but currently they appear as
-  uncategorized. Add to `industrial` channel as a low-priority mapping.
-- `landuse=cemetery` — common in European tiles. Currently uncategorized.
-  Visually similar to parkland (green space). Consider adding to `parkland`.
-
-### Moderate: elevation_layer.py downloads only the center SRTM tile
-
-```python
-name, lat_i, _lon_i, ns, _ew = _srtm_tile(center_lat, center_lon)
-hgt_path = _download_hgt(name, lat_i, ns, cache_dir)
+`road_layers.py` fetches only:
+```
+motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|...
 ```
 
-This loads a single 1°×1° SRTM tile. For cities near latitude/longitude degree
-boundaries (common in dense European cities on river crossings), the 2.56 km
-tile might straddle two SRTM tiles, leaving one half with wrong or zero elevation.
+In African informal settlements, much of the internal circulation network is
+tagged `highway=path` (footpath used by motorcycles) or `highway=track` (dirt
+track). These are not in the filter and will be invisible to the pipeline.
 
-**Fix:** compute the four corners of the bounding box, identify all SRTM tiles
-they fall in, download and mosaic them before reprojecting.
+**Fix option A:** Add `path` and `track` to road class 1 for `africa_informal`
+style only (via a `--style`-conditional road filter in `road_layers.py`).
 
-### Low: `_bbox_latlon` flat-earth approximation
+**Fix option B:** Accept that the pipeline captures vehicle-accessible roads
+only. In Kibera, the mapped vehicle road network is sparse but structurally
+representative. Given the postmortem lesson that the model doesn't need
+perfectly complete data — it needs enough signal to learn the morphological
+style — Option B may be acceptable. Test by visual inspection of 10 tiles
+before deciding.
 
-```python
-lat_deg = half_m / 111_000
-lon_deg = half_m / (111_000 * math.cos(math.radians(center_lat)))
-```
+### Moderate: Missing landuse tags in `osm_layers.py`
 
-This is the same approximation used in both `osm_layers.py` and `road_layers.py`.
-At ±45° latitude (most of Europe, most of Japan), the error is <0.5% — acceptable.
-At 60°N (Helsinki, Tallinn), error is ~2% on longitude, which at 2.56 km tile
-scale = ~50 m positional error. Fine for a generative model training set.
-
-This would only matter at >70°N (Tromsø, Murmansk) — none of the recommended
-cities are near that. No action needed.
-
-### Low: `cities.yaml` has global `style: us_suburb`
-
-The `style:` field at the top level is unused by the pipeline code (nothing in
-`dataset.py` or `prep_flux_dataset.py` reads it), but it's a convention to set up.
-
-**Fix:** add `style:` as a per-city field in YAML and read it in
-`prep_flux_dataset.py` to select the prompt template. Also add a CLI arg
-`--style` as override for bulk runs.
-
-### Low: `dataset.py` has no sparse-tile filter
+Add to `LANDUSE_CATEGORIES`:
 
 ```python
-self.samples.append((os.path.join(d, cf), os.path.join(d, rf)))
+("parkland", ["park", "recreation_ground", "nature_reserve", "forest",
+              "grass", "meadow", "allotments", "village_green", "cemetery"]),
+("industrial", ["industrial", "warehouse", "brownfield", "construction"]),
 ```
 
-No filter on tile quality. For US suburbs this is fine (all tiles have roads).
-For `latam_informal` and `medieval_organic` (small core area), some tiles will
-be mostly background.
+`allotments` is very common in German/Polish/Czech tiles (`soviet_microrayon`
+phase). `cemetery` appears frequently in European and African tiles. `brownfield`
+and `construction` are common in Eastern European tiles.
 
-**Fix:** add `min_road_fraction` parameter to `RoadLayoutDataset.__init__`:
+### Moderate: `RoadLayoutDataset` has no sparse-tile filter
 
+**Fix:** add `min_road_fraction` to `dataset.py`:
 ```python
 if min_road_fraction > 0:
     road = np.load(rp)
@@ -571,54 +768,41 @@ if min_road_fraction > 0:
         continue
 ```
 
-Recommended thresholds: 0.03 for informal, 0.04 for medieval, 0.05 for all
-others.
+Recommended thresholds: 0.03 for `latam_informal`/`africa_informal`, 0.04 for
+`medieval_organic`, 0.05 for all others.
 
-### Non-issue: CRS / projection
+### Low: Single SRTM tile fetch in `elevation_layer.py`
 
-`_bbox_latlon` computes bounding boxes in WGS84 (lat/lon degrees). OSMnx queries
-use lat/lon natively. SRTM is WGS84. Rasterio reprojects to target CRS on load.
-There are **no hardcoded UTM or US-specific projections** in the pipeline. The
-pipeline is already projection-neutral.
+The current code downloads only the SRTM tile for the tile center point. Tiles
+near lat/lon degree boundaries may have an elevation discontinuity mid-tile.
+More relevant for European cities (denser on SRTM tile boundaries) than US.
 
-### Non-issue: `ROAD_CHANNELS` tag completeness globally
+**Fix:** compute all four bbox corners, identify all SRTM tiles they fall in,
+download and mosaic before reprojecting. Medium-priority before `euro_grid` run.
 
-The road type filter in `road_layers.py`:
+### Non-issues (unchanged)
 
-```python
-cf = '["highway"~"motorway|trunk|primary|secondary|tertiary|residential|unclassified|living_street|service|motorway_link|..."]'
-```
-
-These highway types exist in OSM globally. Non-US regions may use them in
-different proportions (more `living_street` in Europe, more `unclassified`
-in South Asia) but the tag set is complete. The binning into 5 classes
-(`bg/residential/tertiary/primary/motorway`) may over-bin some European road
-types (many European `secondary` roads map to class 3 `primary` — correct).
-No changes needed.
+- **CRS/projection:** pipeline is WGS84 throughout — no US-specific projections.
+- **Road channel global coverage:** OSM highway types used are globally standard.
+- **Flat-earth bbox approximation:** <2% error at any recommended city latitude.
 
 ---
 
-## Summary Checklist for Implementation
+## Summary Checklist
 
-**Before first non-US data acquisition run:**
-
-- [ ] Parameterize `--style` in `prep_flux_dataset.py` with prompt map
-- [ ] Add `allotments`, `cemetery`, `village_green` to `parkland` category in `osm_layers.py`
-- [ ] Add `brownfield`, `construction` to `industrial` category in `osm_layers.py`
+**Before first non-US data acquisition run (`euro_grid`):**
+- [ ] Parameterize `--style` in `prep_flux_dataset.py`
+- [ ] Add `allotments`, `cemetery`, `village_green` to `parkland` in `osm_layers.py`
+- [ ] Add `brownfield`, `construction` to `industrial` in `osm_layers.py`
 - [ ] Add `min_road_fraction` filter to `RoadLayoutDataset`
-- [ ] Add `style:` per-city field to `cities.yaml` format, or create per-style YAML files
-- [ ] Update `build_hf_manifest.py` to pass through style-appropriate prompts from `meta/` files
+- [ ] Add `style:` per-city field to YAML format
+- [ ] Fix SRTM multi-tile mosaic (before `euro_grid` run)
 
-**Before training `euro_grid`:**
+**Before `africa_informal` run:**
+- [ ] Decide Option A vs B for `highway=path`/`track` (visual inspection of 10 Kibera tiles)
+- [ ] If Option A: add style-conditional road filter to `road_layers.py`
 
-- [ ] Create `data_pipeline/cities_euro_grid.yaml` with Phase 1 cities
-- [ ] Run pipeline, verify landuse coverage on 5-10 sample tiles (visual check)
-- [ ] Confirm SRTM tiles download correctly for European lat/lon (test with Paris tile)
-- [ ] Create `data/flux_cnet_euro_grid_hf/` with `build_hf_manifest.py`
-- [ ] Update SLURM script with new `OUT_DIR` and `--resume_from_checkpoint` pointing to `sdxl_cnet_v1`
-
-**Before training `medieval_organic`:**
-
-- [ ] Audit tile yield per city (expect ~50-80 tiles vs 150 for suburban)
-  and expand city list if total tiles <1,000
-- [ ] Investigate SRTM multi-tile mosaic fix for cities near lat/lon boundaries
+**Before `us_grid` run (Phase 1):**
+- [ ] No pipeline changes needed
+- [ ] Create `data_pipeline/cities_us_grid.yaml`
+- [ ] Verify alley (`highway=service`) density is reasonable in 5 sample Chicago tiles
