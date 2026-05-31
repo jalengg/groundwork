@@ -1,0 +1,43 @@
+tile_size_px: 512
+pixel_size_m: 5
+n_tiles_per_city: 150
+jitter_fraction: 0.3
+style: soviet_microrayon
+
+cities:
+  - name: ursynow_pl
+    query: "Ursynów, Warsaw, Poland"
+    split: val
+  - name: praga_poludnie_pl
+    query: "Praga-Południe, Warsaw, Poland"
+    split: train
+  - name: jizni_mesto_cz
+    query: "Jižní Město, Prague, Czech Republic"
+    split: train
+  - name: petrzalka_sk
+    query: "Petržalka, Bratislava, Slovakia"
+    split: train
+  - name: ujpalota_hu
+    query: "Újpalota, Budapest, Hungary"
+    split: train
+  - name: fabijoniskes_lt
+    query: "Fabijoniškės, Vilnius, Lithuania"
+    split: train
+  - name: lasnamae_ee
+    query: "Lasnamäe, Tallinn, Estonia"
+    split: train
+  - name: drumul_taberei_ro
+    query: "Drumul Taberei, Bucharest, Romania"
+    split: train
+  - name: grunau_de
+    query: "Grünau, Leipzig, Germany"
+    split: train
+  - name: nowa_huta_pl
+    query: "Nowa Huta, Kraków, Poland"
+    split: train
+  - name: purvciems_lv
+    query: "Purvciems, Riga, Latvia"
+    split: train
+  - name: mustamae_ee
+    query: "Mustamäe, Tallinn, Estonia"
+    split: train

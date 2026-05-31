@@ -1,0 +1,43 @@
+tile_size_px: 512
+pixel_size_m: 5
+n_tiles_per_city: 80
+jitter_fraction: 0.3
+style: medieval_organic
+
+cities:
+  - name: bologna_cs_it
+    query: "Centro Storico, Bologna, Italy"
+    split: val
+  - name: bruges_be
+    query: "Bruges, Belgium"
+    split: train
+  - name: chester_uk
+    query: "Chester, England"
+    split: train
+  - name: colmar_fr
+    query: "Colmar, France"
+    split: train
+  - name: siena_it
+    query: "Siena, Italy"
+    split: train
+  - name: toledo_es
+    query: "Toledo, Spain"
+    split: train
+  - name: ghent_be
+    query: "Ghent, Belgium"
+    split: train
+  - name: york_uk
+    query: "York, England"
+    split: train
+  - name: regensburg_de
+    query: "Regensburg, Germany"
+    split: train
+  - name: lucca_it
+    query: "Lucca, Italy"
+    split: train
+  - name: tallinn_ee
+    query: "Tallinn, Estonia"
+    split: train
+  - name: strasbourg_fr
+    query: "Strasbourg, France"
+    split: train

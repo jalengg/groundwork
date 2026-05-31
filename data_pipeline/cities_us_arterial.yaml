@@ -1,0 +1,43 @@
+tile_size_px: 512
+pixel_size_m: 5
+n_tiles_per_city: 150
+jitter_fraction: 0.3
+style: us_arterial
+
+cities:
+  - name: culver_city_ca
+    query: "Culver City, California, USA"
+    split: train
+  - name: mar_vista_ca
+    query: "Mar Vista, Los Angeles, California, USA"
+    split: train
+  - name: palms_ca
+    query: "Palms, Los Angeles, California, USA"
+    split: train
+  - name: westchester_ca
+    query: "Westchester, Los Angeles, California, USA"
+    split: train
+  - name: van_nuys_ca
+    query: "Van Nuys, Los Angeles, California, USA"
+    split: val
+  - name: reseda_ca
+    query: "Reseda, Los Angeles, California, USA"
+    split: train
+  - name: glendale_ca
+    query: "Glendale, California, USA"
+    split: train
+  - name: burbank_ca
+    query: "Burbank, California, USA"
+    split: train
+  - name: sam_hughes_az
+    query: "Sam Hughes, Tucson, Arizona, USA"
+    split: train
+  - name: bixby_knolls_ca
+    query: "Bixby Knolls, Long Beach, California, USA"
+    split: train
+  - name: willow_glen_ca
+    query: "Willow Glen, San Jose, California, USA"
+    split: train
+  - name: albuquerque_nob_hill_nm
+    query: "Nob Hill, Albuquerque, New Mexico, USA"
+    split: train
