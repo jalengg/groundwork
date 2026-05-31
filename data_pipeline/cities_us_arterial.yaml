@@ -8,14 +8,14 @@ cities:
   - name: culver_city_ca
     query: "Culver City, California, USA"
     split: train
-  - name: mar_vista_ca
-    query: "Mar Vista, Los Angeles, California, USA"
+  - name: hawthorne_ca
+    query: "Hawthorne, California, USA"
     split: train
-  - name: palms_ca
-    query: "Palms, Los Angeles, California, USA"
+  - name: inglewood_ca
+    query: "Inglewood, California, USA"
     split: train
-  - name: westchester_ca
-    query: "Westchester, Los Angeles, California, USA"
+  - name: lawndale_ca
+    query: "Lawndale, California, USA"
     split: train
   - name: van_nuys_ca
     query: "Van Nuys, Los Angeles, California, USA"
@@ -32,8 +32,8 @@ cities:
   - name: sam_hughes_az
     query: "Sam Hughes, Tucson, Arizona, USA"
     split: train
-  - name: bixby_knolls_ca
-    query: "Bixby Knolls, Long Beach, California, USA"
+  - name: torrance_ca
+    query: "Torrance, California, USA"
     split: train
   - name: willow_glen_ca
     query: "Willow Glen, San Jose, California, USA"

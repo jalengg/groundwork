@@ -5,14 +5,14 @@ jitter_fraction: 0.3
 style: africa_informal
 
 cities:
-  - name: kibera_ke
-    query: "Kibera, Nairobi, Kenya"
-    split: val
+  - name: kangemi_ke
+    query: "Kangemi, Nairobi, Kenya"
+    split: train
   - name: mathare_ke
     query: "Mathare, Nairobi, Kenya"
-    split: train
-  - name: korogocho_ke
-    query: "Korogocho, Nairobi, Kenya"
+    split: val
+  - name: kayole_ke
+    query: "Kayole, Nairobi, Kenya"
     split: train
   - name: manzese_tz
     query: "Manzese, Dar es Salaam, Tanzania"
@@ -20,20 +20,20 @@ cities:
   - name: tandale_tz
     query: "Tandale, Dar es Salaam, Tanzania"
     split: train
-  - name: kisenyi_ug
-    query: "Kisenyi, Kampala, Uganda"
+  - name: kawempe_ug
+    query: "Kawempe, Kampala, Uganda"
     split: train
   - name: nima_gh
     query: "Nima, Accra, Ghana"
     split: train
-  - name: mamobi_gh
-    query: "Mamobi, Accra, Ghana"
+  - name: maamobi_gh
+    query: "Maamobi, Accra, Ghana"
     split: train
   - name: kanyama_zm
     query: "Kanyama, Lusaka, Zambia"
     split: train
-  - name: khayelitsha_sa
-    query: "Khayelitsha, Cape Town, South Africa"
+  - name: langa_za
+    query: "Langa, Cape Town, South Africa"
     split: train
   - name: chamanculo_mz
     query: "Chamanculo, Maputo, Mozambique"

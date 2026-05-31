@@ -11,8 +11,8 @@ cities:
   - name: praga_poludnie_pl
     query: "Praga-Południe, Warsaw, Poland"
     split: train
-  - name: jizni_mesto_cz
-    query: "Jižní Město, Prague, Czech Republic"
+  - name: letnany_cz
+    query: "Letňany, Prague, Czech Republic"
     split: train
   - name: petrzalka_sk
     query: "Petržalka, Bratislava, Slovakia"
@@ -21,7 +21,7 @@ cities:
     query: "Újpalota, Budapest, Hungary"
     split: train
   - name: fabijoniskes_lt
-    query: "Fabijoniškės, Vilnius, Lithuania"
+    query: "Fabijoniškės"
     split: train
   - name: lasnamae_ee
     query: "Lasnamäe, Tallinn, Estonia"

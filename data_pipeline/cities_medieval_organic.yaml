@@ -6,19 +6,19 @@ style: medieval_organic
 
 cities:
   - name: bologna_cs_it
-    query: "Centro Storico, Bologna, Italy"
-    split: val
+    query: "Bologna, Italy"
+    split: train
   - name: bruges_be
     query: "Bruges, Belgium"
-    split: train
+    split: val
   - name: chester_uk
-    query: "Chester, England"
+    query: "City of Chester, England"
     split: train
   - name: colmar_fr
     query: "Colmar, France"
     split: train
-  - name: siena_it
-    query: "Siena, Italy"
+  - name: bamberg_de
+    query: "Bamberg, Germany"
     split: train
   - name: toledo_es
     query: "Toledo, Spain"
@@ -32,11 +32,11 @@ cities:
   - name: regensburg_de
     query: "Regensburg, Germany"
     split: train
-  - name: lucca_it
-    query: "Lucca, Italy"
+  - name: san_gimignano_it
+    query: "San Gimignano, Italy"
     split: train
-  - name: tallinn_ee
-    query: "Tallinn, Estonia"
+  - name: cesis_lv
+    query: "Cēsis, Latvia"
     split: train
   - name: strasbourg_fr
     query: "Strasbourg, France"
