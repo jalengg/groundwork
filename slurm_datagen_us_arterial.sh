@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --account=jalenj4-ic
+#SBATCH --job-name=gw-datagen-arterial
+#SBATCH --partition=secondary
+#SBATCH --output=logs/datagen_arterial_%j.out
+#SBATCH --error=logs/datagen_arterial_%j.err
+#SBATCH --time=04:00:00
+#SBATCH --mem=16G
+#SBATCH --cpus-per-task=4
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=jalen.jiang2+slurm@gmail.com
+
+cd "$SLURM_SUBMIT_DIR"
+
+CITIES_CONFIG="data_pipeline/cities_us_arterial.yaml"
+DATA_OUTPUT="data_arterial/"
+
+echo "========================================"
+echo "Groundwork Data Generation — US Arterial"
+echo "Start Time: $(date)"
+echo "Node: $SLURM_NODELIST"
+echo "CITIES_CONFIG=$CITIES_CONFIG"
+echo "DATA_OUTPUT=$DATA_OUTPUT"
+echo "========================================"
+
+mkdir -p logs
+
+source .venv/bin/activate
+export PYTHONPATH="$SLURM_SUBMIT_DIR"
+
+echo "Tile counts before:"
+for d in "$DATA_OUTPUT"*/; do
+    city=$(basename "$d")
+    count=$(ls "$d"/cond_*.npy 2>/dev/null | wc -l)
+    echo "  $city: $count"
+done
+
+echo "========================================"
+echo "Starting data generation (skips existing tiles)..."
+python data_pipeline/cdg.py --config "$CITIES_CONFIG" --output "$DATA_OUTPUT"
+
+EXIT_CODE=$?
+
+echo "========================================"
+echo "Tile counts after:"
+for d in "$DATA_OUTPUT"*/; do
+    city=$(basename "$d")
+    count=$(ls "$d"/cond_*.npy 2>/dev/null | wc -l)
+    echo "  $city: $count"
+done
+
+echo "========================================"
+echo "End Time: $(date)"
+echo "Exit Code: $EXIT_CODE"
+echo "========================================"
