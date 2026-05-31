@@ -19,8 +19,8 @@ LANDUSE_VALUES = {
 LANDUSE_CATEGORIES = [
     ("residential",  ["residential", "apartments"]),
     ("commercial",   ["commercial", "retail"]),
-    ("industrial",   ["industrial", "warehouse"]),
-    ("parkland",     ["park", "recreation_ground", "nature_reserve", "forest", "grass", "meadow"]),
+    ("industrial",   ["industrial", "warehouse", "brownfield", "construction"]),
+    ("parkland",     ["park", "recreation_ground", "nature_reserve", "forest", "grass", "meadow", "allotments", "village_green", "cemetery"]),
     ("agricultural", ["farmland", "farmyard"]),
 ]
 WATER_TAGS = {"natural": ["water", "wetland"], "waterway": True, "landuse": ["reservoir", "basin"]}

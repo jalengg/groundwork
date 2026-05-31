@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 
 
 class RoadLayoutDataset(Dataset):
-    def __init__(self, city_dirs: list, augment: bool = True):
+    def __init__(self, city_dirs: list, augment: bool = True, min_road_fraction: float = 0.0):
         self.samples = []
         for d in city_dirs:
             if not os.path.isdir(d):
@@ -18,6 +18,11 @@ class RoadLayoutDataset(Dataset):
                 idx = cf.replace("cond_", "").replace(".npy", "")
                 rf = f"road_{idx}.npy"
                 if os.path.exists(os.path.join(d, rf)):
+                    if min_road_fraction > 0.0:
+                        road = np.load(os.path.join(d, rf)).astype(np.float32)
+                        frac = (road[1:].sum(axis=0) > 0).mean()
+                        if frac < min_road_fraction:
+                            continue
                     self.samples.append((os.path.join(d, cf), os.path.join(d, rf)))
         self.augment = augment
 

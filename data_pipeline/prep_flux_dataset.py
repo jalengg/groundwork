@@ -39,11 +39,19 @@ PALETTE = np.array(
     dtype=np.uint8,
 )
 
-PROMPT = (
-    "top-down satellite-style raster of a US suburban road network, "
-    "high-contrast color-coded road class map, flat color, vector style, "
-    "no texture, no shading"
-)
+PROMPTS = {
+    "us_suburb":        "top-down satellite-style raster of a US suburban road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "us_grid":          "top-down satellite-style raster of an American urban grid city road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "us_arterial":      "top-down satellite-style raster of an American inner suburban arterial grid road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "euro_grid":        "top-down satellite-style raster of a European planned grid city road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "medieval_organic": "top-down satellite-style raster of a medieval European road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "soviet_microrayon":"top-down satellite-style raster of a Soviet housing estate road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "latam_colonial":   "top-down satellite-style raster of a Latin American colonial grid city road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "latam_informal":   "top-down satellite-style raster of a Latin American informal settlement road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "africa_informal":  "top-down satellite-style raster of a sub-Saharan African informal settlement road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "africa_township":  "top-down satellite-style raster of a sub-Saharan African township road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+    "east_asian_dense": "top-down satellite-style raster of a dense East Asian city road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading",
+}
 
 
 def encode_cond(cond, target_size=1024):
@@ -72,6 +80,7 @@ def main():
     p.add_argument("--holdout-cities", nargs="*", default=["irving_tx"],
                    help="Cities to skip (held out for eval).")
     p.add_argument("--target-size", type=int, default=1024)
+    p.add_argument("--style", default="us_suburb", choices=list(PROMPTS.keys()))
     args = p.parse_args()
 
     out = Path(args.dst)
@@ -95,7 +104,7 @@ def main():
                     encode_cond(cond, args.target_size)[:, :, ::-1])
         cv2.imwrite(str(out / "target" / f"{city}_{rid}.png"),
                     encode_target(road, args.target_size)[:, :, ::-1])
-        (out / "meta" / f"{city}_{rid}.txt").write_text(PROMPT)
+        (out / "meta" / f"{city}_{rid}.txt").write_text(PROMPTS[args.style])
         n_done += 1
         if n_done % 100 == 0:
             print(f"  {n_done} tiles converted")

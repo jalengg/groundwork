@@ -20,11 +20,14 @@ echo "========================================"
 
 mkdir -p logs
 
+CITIES_CONFIG="${CITIES_CONFIG:-data_pipeline/cities.yaml}"
+DATA_OUTPUT="${DATA_OUTPUT:-data/}"
+
 source .venv/bin/activate
 export PYTHONPATH="$SLURM_SUBMIT_DIR"
 
 echo "Tile counts before:"
-for d in data/*/; do
+for d in "$DATA_OUTPUT"*/; do
     city=$(basename "$d")
     count=$(ls "$d"/cond_*.npy 2>/dev/null | wc -l)
     echo "  $city: $count"
@@ -32,13 +35,13 @@ done
 
 echo "========================================"
 echo "Starting data generation (skips existing tiles)..."
-python data_pipeline/cdg.py --config data_pipeline/cities.yaml --output data/
+python data_pipeline/cdg.py --config "$CITIES_CONFIG" --output "$DATA_OUTPUT"
 
 EXIT_CODE=$?
 
 echo "========================================"
 echo "Tile counts after:"
-for d in data/*/; do
+for d in "$DATA_OUTPUT"*/; do
     city=$(basename "$d")
     count=$(ls "$d"/cond_*.npy 2>/dev/null | wc -l)
     echo "  $city: $count"
