@@ -22,6 +22,9 @@ cd "$SLURM_SUBMIT_DIR"
 OUT_DIR="${OUT_DIR:-/scratch/jalenj4/runs/sdxl_cnet_soviet_microrayon_v1}"
 DATA_DIR="${DATA_DIR:-/u/jalenj4/groundwork/data/flux_cnet_soviet_microrayon_hf}"
 MAX_STEPS="${MAX_STEPS:-25000}"
+# TODO: set after running prep_flux_dataset.py for this style, then re-submit.
+# VALIDATION_ARGS='--validation_image "/u/jalenj4/groundwork/data/flux_cnet_soviet_microrayon_val/val_cond_0.png" "/u/jalenj4/groundwork/data/flux_cnet_soviet_microrayon_val/val_cond_1.png" --validation_prompt "top-down satellite-style raster of a Soviet housing estate road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading" "top-down satellite-style raster of a Soviet housing estate road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading"'
+VALIDATION_ARGS=""
 
 source .venv/bin/activate
 export HF_HOME=/scratch/jalenj4/hf
@@ -76,11 +79,8 @@ accelerate launch --num_processes 1 --mixed_precision fp16 \
     --dataloader_num_workers=4 \
     --seed=42 \
     --report_to=tensorboard \
+    $VALIDATION_ARGS \
     $RESUME
-
-# TODO: fill in after running prep_flux_dataset.py for this style
-# --validation_image "/u/jalenj4/groundwork/data/flux_cnet_soviet_val/val_cond_0.png" "/u/jalenj4/groundwork/data/flux_cnet_soviet_val/val_cond_1.png" \
-# --validation_prompt "top-down satellite-style raster of a Soviet housing estate road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading" "top-down satellite-style raster of a Soviet housing estate road network, high-contrast color-coded road class map, flat color, vector style, no texture, no shading" \
 
 EXIT_CODE=$?
 echo "========================================"
