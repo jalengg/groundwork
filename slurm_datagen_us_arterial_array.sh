@@ -32,7 +32,7 @@ echo "========================================"
 
 mkdir -p logs
 
-BEFORE=$(ls "$DATA_OUTPUT$CITY"/cond_*.npy 2>/dev/null | wc -l)
+BEFORE=$(ls "$DATA_OUTPUT$CITY"/cond_*.npy 2>/dev/null | wc -l || true)
 echo "Tiles before: $BEFORE"
 
 python data_pipeline/cdg.py \
@@ -42,7 +42,7 @@ python data_pipeline/cdg.py \
 
 EXIT_CODE=$?
 
-AFTER=$(ls "$DATA_OUTPUT$CITY"/cond_*.npy 2>/dev/null | wc -l)
+AFTER=$(ls "$DATA_OUTPUT$CITY"/cond_*.npy 2>/dev/null | wc -l || true)
 echo "Tiles after: $AFTER"
 echo "End: $(date)"
 echo "Exit: $EXIT_CODE"
