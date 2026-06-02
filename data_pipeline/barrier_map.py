@@ -1,30 +1,35 @@
 import numpy as np
-from scipy.ndimage import label, binary_dilation, generate_binary_structure
+from scipy.ndimage import label, binary_dilation, generate_binary_structure, sobel
 
 
 def compute_barrier(
     cond: np.ndarray,
     road: np.ndarray,
     arterial_dilation: int = 3,
-    landuse_threshold: float = 0.3,
-    slope_threshold: float = 0.25,
+    water_threshold: float = 0.5,
+    landuse_threshold: float = 0.12,
+    slope_threshold: float = 0.03,
 ) -> np.ndarray:
-    """Returns (H, W) bool barrier mask."""
+    """Returns (H, W) bool barrier mask.
+
+    landuse_threshold / slope_threshold are absolute Sobel magnitudes on 0-1 normalised
+    input — not per-tile relative thresholds.  A hard 0→1 landuse edge over ~3 px
+    produces Sobel ≈ 0.5; a steep hillside at 5 m/px produces Sobel ≈ 0.05-0.15.
+    Per-tile normalisation is intentionally avoided: it amplifies even constant gentle
+    slopes to 1.0 everywhere, flooding the tile with false barriers.
+    """
     arterial = (road[3] > 0.5) | (road[4] > 0.5)
     if arterial_dilation > 0:
-        struct = generate_binary_structure(2, 1)
+        # 8-connectivity so diagonal road segments get a uniform buffer
+        struct = generate_binary_structure(2, 2)
         arterial = binary_dilation(arterial, structure=struct, iterations=arterial_dilation)
 
-    water = cond[1] > 0.5
+    water = cond[1] > water_threshold
 
     landuse_max = cond[2:7].max(axis=0)
-    landuse_grad = _sobel_magnitude(landuse_max)
-    landuse_norm = _normalize(landuse_grad)
-    landuse_edge = landuse_norm > landuse_threshold
+    landuse_edge = _sobel_magnitude(landuse_max) > landuse_threshold
 
-    slope_grad = _sobel_magnitude(cond[0])
-    slope_norm = _normalize(slope_grad)
-    slope_edge = slope_norm > slope_threshold
+    slope_edge = _sobel_magnitude(cond[0]) > slope_threshold
 
     return arterial | water | landuse_edge | slope_edge
 
@@ -51,6 +56,7 @@ def sample_inpaint_mask(
     road: np.ndarray,
     rng=None,
     arterial_dilation: int = 3,
+    water_threshold: float = 0.5,
     landuse_threshold: float = 0.3,
     slope_threshold: float = 0.25,
     min_frac: float = 0.03,
@@ -69,6 +75,7 @@ def sample_inpaint_mask(
         cond,
         road,
         arterial_dilation=arterial_dilation,
+        water_threshold=water_threshold,
         landuse_threshold=landuse_threshold,
         slope_threshold=slope_threshold,
     )
@@ -89,16 +96,7 @@ def sample_inpaint_mask(
 
 
 def _sobel_magnitude(arr: np.ndarray) -> np.ndarray:
-    gx = np.gradient(arr, axis=1)
-    gy = np.gradient(arr, axis=0)
-    return np.sqrt(gx ** 2 + gy ** 2)
-
-
-def _normalize(arr: np.ndarray) -> np.ndarray:
-    lo, hi = arr.min(), arr.max()
-    if hi - lo < 1e-8:
-        return np.zeros_like(arr)
-    return (arr - lo) / (hi - lo)
+    return np.sqrt(sobel(arr, axis=1) ** 2 + sobel(arr, axis=0) ** 2)
 
 
 def _random_ellipse_mask(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
