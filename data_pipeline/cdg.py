@@ -82,6 +82,9 @@ def main():
 
             need = n_tiles - n_existing
             centers = generate_tile_centers(bbox_m, tile_size_m, need, jitter)
+            if not centers:
+                print(f"  {city['name']}: bbox too small for tile grid — skipping.")
+                break
             print(f"  {city['name']}: {start_idx}/{n_tiles} — generating {len(centers)} more")
 
             for i, (cx_m, cy_m, rot) in enumerate(tqdm(centers, desc=city["name"])):

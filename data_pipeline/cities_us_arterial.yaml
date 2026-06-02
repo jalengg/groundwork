@@ -14,8 +14,8 @@ cities:
   - name: inglewood_ca
     query: "Inglewood, California, USA"
     split: train
-  - name: lawndale_ca
-    query: "Lawndale, California, USA"
+  - name: compton_ca
+    query: "Compton, California, USA"
     split: train
   - name: van_nuys_ca
     query: "Van Nuys, Los Angeles, California, USA"
