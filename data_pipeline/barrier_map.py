@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.ndimage import label, binary_dilation, generate_binary_structure, sobel
+from scipy.ndimage import label, binary_dilation, generate_binary_structure
 
 
 def compute_barrier(
@@ -7,16 +7,12 @@ def compute_barrier(
     road: np.ndarray,
     arterial_dilation: int = 3,
     water_threshold: float = 0.5,
-    landuse_threshold: float = 0.12,
-    slope_threshold: float = 0.03,
 ) -> np.ndarray:
-    """Returns (H, W) bool barrier mask.
+    """Returns (H, W) bool barrier mask from arterials and water only.
 
-    landuse_threshold / slope_threshold are absolute Sobel magnitudes on 0-1 normalised
-    input — not per-tile relative thresholds.  A hard 0→1 landuse edge over ~3 px
-    produces Sobel ≈ 0.5; a steep hillside at 5 m/px produces Sobel ≈ 0.05-0.15.
-    Per-tile normalisation is intentionally avoided: it amplifies even constant gentle
-    slopes to 1.0 everywhere, flooding the tile with false barriers.
+    Landuse transitions and terrain slope were tried but fragmented cells into
+    non-contiguous noise — arterials already encode the morphologically meaningful
+    boundaries for subdivision-scale inpainting.
     """
     arterial = (road[3] > 0.5) | (road[4] > 0.5)
     if arterial_dilation > 0:
@@ -26,12 +22,7 @@ def compute_barrier(
 
     water = cond[1] > water_threshold
 
-    landuse_max = cond[2:7].max(axis=0)
-    landuse_edge = _sobel_magnitude(landuse_max) > landuse_threshold
-
-    slope_edge = _sobel_magnitude(cond[0]) > slope_threshold
-
-    return arterial | water | landuse_edge | slope_edge
+    return arterial | water
 
 
 def extract_cells(
@@ -57,8 +48,6 @@ def sample_inpaint_mask(
     rng=None,
     arterial_dilation: int = 3,
     water_threshold: float = 0.5,
-    landuse_threshold: float = 0.3,
-    slope_threshold: float = 0.25,
     min_frac: float = 0.03,
     max_frac: float = 0.7,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -76,8 +65,6 @@ def sample_inpaint_mask(
         road,
         arterial_dilation=arterial_dilation,
         water_threshold=water_threshold,
-        landuse_threshold=landuse_threshold,
-        slope_threshold=slope_threshold,
     )
     cells = extract_cells(barrier, min_frac=min_frac, max_frac=max_frac)
 
@@ -93,10 +80,6 @@ def sample_inpaint_mask(
     masked_road[2][cell_mask] = 0.0
 
     return cell_mask, masked_road
-
-
-def _sobel_magnitude(arr: np.ndarray) -> np.ndarray:
-    return np.sqrt(sobel(arr, axis=1) ** 2 + sobel(arr, axis=0) ** 2)
 
 
 def _random_ellipse_mask(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
