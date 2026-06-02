@@ -11,10 +11,9 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=jalen.jiang2+slurm@gmail.com
 
-# SD 1.5 ControlNet trainer (diffusers v0.38.0). Auto-resumes from latest
-# checkpoint if present. All caches on /scratch to avoid /u quota.
-#
-# Submit once; re-submit after the 18h walltime — $RESUME picks up.
+# SD 1.5 ControlNet trainer. Auto-resumes from latest checkpoint internally.
+# All caches on /scratch to avoid /u quota.
+# Submit once; re-submit after the 18h walltime — trainer picks up from checkpoint.
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
@@ -39,15 +38,10 @@ export PYTHONUNBUFFERED=1
 export TMPDIR=/scratch/jalenj4/tmp
 mkdir -p "$TMPDIR" "$HF_HOME" "$HF_DATASETS_CACHE" logs "$OUT_DIR"
 
-RESUME=""
-if compgen -G "$OUT_DIR/checkpoint-*" > /dev/null; then
-    RESUME="--resume_from_checkpoint=latest"
-    echo "Resuming from latest checkpoint."
-fi
-
-# TODO: Set VALIDATION_ARGS with --validation_image and --validation_prompt
-# as needed for SD 1.5 (512x512 resolution)
+# TODO: set after running prep_sd15_dataset.py for this style, then re-submit.
+# VALIDATION_ARGS='--validation_image "/u/jalenj4/groundwork/data/flux_cnet_val/val_cond_0.png" --validation_prompt "top-down raster of a US suburban road network, ..."'
 VALIDATION_ARGS=""
+# Note: auto-resume is handled inside train_controlnet_sd15.py — no $RESUME needed here.
 
 echo "========================================"
 echo "SD 1.5 ControlNet training"
@@ -61,31 +55,25 @@ echo "========================================"
 
 python third_party/train_controlnet_sd15.py \
     --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
-    --pretrained_controlnet_model_name_or_path="$CONTROLNET_INIT" \
+    --controlnet_model_name_or_path="$CONTROLNET_INIT" \
     --output_dir="$OUT_DIR" \
-    --dataset_name=imagefolder \
-    --city_dirs $CITY_DIRS \
-    --image_column=image \
-    --caption_column=text \
-    --conditioning_image_column=conditioning_image \
+    --city_dirs "$CITY_DIRS" \
     --resolution=512 \
-    --train_batch_size=4 \
-    --gradient_accumulation_steps=1 \
-    --gradient_checkpointing \
-    --use_8bit_adam \
+    --train_batch_size=1 \
+    --gradient_accumulation_steps=8 \
     --learning_rate=1e-5 \
-    --lr_scheduler=constant_with_warmup \
     --lr_warmup_steps=500 \
     --max_train_steps="$MAX_STEPS" \
-    --checkpointing_steps=500 \
+    --checkpointing_steps=1000 \
     --checkpoints_total_limit=3 \
-    --validation_steps=250 \
-    --proportion_empty_prompts=0.1 \
+    --validation_steps=500 \
     --dataloader_num_workers=4 \
+    --p_inpaint=0.5 \
+    --min_road_fraction=0.05 \
+    --mixed_precision=fp16 \
     --seed=42 \
     --report_to=tensorboard \
-    $VALIDATION_ARGS \
-    $RESUME
+    $VALIDATION_ARGS
 
 EXIT_CODE=$?
 echo "========================================"
