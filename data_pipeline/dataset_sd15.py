@@ -6,6 +6,13 @@ from torch.utils.data import Dataset
 
 from data_pipeline.barrier_map import sample_inpaint_mask
 
+
+def sd15_worker_init(worker_id):
+    """DataLoader worker_init_fn — re-seeds each worker's RNG so augmentation
+    sequences diverge instead of all workers producing identical outputs."""
+    info = torch.utils.data.get_worker_info()
+    info.dataset.rng = np.random.default_rng(info.seed)
+
 # 5-class palette: bg, residential, tertiary, primary, motorway
 # Each row is (R, G, B) in [0, 1]
 PALETTE_FLOAT = np.array(
