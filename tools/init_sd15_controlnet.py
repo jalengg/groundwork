@@ -67,7 +67,7 @@ def main():
         # Randomly initialize new channels (3-4) with small std (0.02, typical for transformers)
         torch.nn.init.normal_(new_conv.weight[:, 3:, :, :], mean=0.0, std=0.02)
         # Copy bias unchanged
-        new_conv.bias = old_conv.bias.clone() if old_conv.bias is not None else None
+        new_conv.bias = torch.nn.Parameter(old_conv.bias.clone()) if old_conv.bias is not None else None
 
     print(f"New conv_in shape: {new_conv.weight.shape}")
     print(f"  in_channels=5, out_channels={out_channels}, kernel={kernel_size}, padding={padding}")
