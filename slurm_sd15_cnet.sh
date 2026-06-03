@@ -21,15 +21,17 @@ OUT_DIR="${OUT_DIR:-/scratch/jalenj4/runs/sd15_cnet_v1}"
 CONTROLNET_INIT="${CONTROLNET_INIT:-/scratch/jalenj4/runs/sd15_controlnet_init}"
 MAX_STEPS="${MAX_STEPS:-15000}"
 
-# Build CITY_DIRS dynamically from /u/jalenj4/groundwork/data/, excluding irving_tx
+# Only include dirs that have cond_*.npy tiles (city dirs), excluding irving_tx holdout
 CITY_DIRS=""
 for d in /u/jalenj4/groundwork/data/*/; do
     city=$(basename "$d")
     [[ "$city" == "irving_tx" ]] && continue
+    [[ -z "$(ls "$d"cond_*.npy 2>/dev/null | head -1)" ]] && continue
     CITY_DIRS="$CITY_DIRS $d"
 done
 
 source .venv/bin/activate
+export PYTHONPATH="$SLURM_SUBMIT_DIR"
 export HF_HOME=/scratch/jalenj4/hf
 export HF_DATASETS_CACHE=/scratch/jalenj4/hf_datasets
 export HF_HUB_ENABLE_HF_TRANSFER=1
@@ -57,7 +59,7 @@ python third_party/train_controlnet_sd15.py \
     --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
     --controlnet_model_name_or_path="$CONTROLNET_INIT" \
     --output_dir="$OUT_DIR" \
-    --city_dirs "$CITY_DIRS" \
+    --city_dirs $CITY_DIRS \
     --resolution=512 \
     --train_batch_size=1 \
     --gradient_accumulation_steps=8 \
