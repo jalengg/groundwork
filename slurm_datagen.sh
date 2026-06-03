@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=jalenj4-ic
 #SBATCH --job-name=gw-datagen
-#SBATCH --partition=secondary
+#SBATCH --partition=IllinoisComputes
 #SBATCH --output=logs/datagen_%j.out
 #SBATCH --error=logs/datagen_%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
 #SBATCH --mail-type=ALL
